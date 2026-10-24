@@ -36,6 +36,16 @@ namespace PersonaSwapper.Core.Preview
             for ( var i = 0; i < mNodes.Length; i++ )
                 mIndexByName.TryAdd( mNodes[i].Name, i );
 
+            // Bind-pose data the evaluator has to repair (zero/NaN rotations would turn every child into NaN).
+            for ( var i = 0; i < mNodes.Length; i++ )
+            {
+                var r = mNodes[i].Rotation;
+                if ( !IsFinite( r ) || r.LengthSquared() < 1e-12f )
+                    Issues.Add( $"node '{mNodes[i].Name}' has an invalid rotation {r}; using identity" );
+                if ( !IsFinite( mNodes[i].Translation ) || !IsFinite( mNodes[i].Scale ) )
+                    Issues.Add( $"node '{mNodes[i].Name}' has a non-finite translation or scale; using defaults" );
+            }
+
             mTranslations = new Vector3[mNodes.Length];
             mRotations = new Quaternion[mNodes.Length];
             mScales = new Vector3[mNodes.Length];
@@ -43,6 +53,9 @@ namespace PersonaSwapper.Core.Preview
         }
 
         public Model Model { get; }
+
+        /// <summary>Invalid node data found (and worked around) when the evaluator was created.</summary>
+        public List<string> Issues { get; } = new();
 
         public int NodeCount => mNodes.Length;
 
@@ -84,12 +97,19 @@ namespace PersonaSwapper.Core.Preview
 
             for ( var i = 0; i < mNodes.Length; i++ )
             {
-                var local = Matrix4x4.CreateFromQuaternion( Quaternion.Normalize( mRotations[i] ) ) * Matrix4x4.CreateScale( mScales[i] );
-                local.Translation = mTranslations[i];
+                var rotation = mRotations[i];
+                rotation = IsFinite( rotation ) && rotation.LengthSquared() > 1e-12f ? Quaternion.Normalize( rotation ) : Quaternion.Identity;
+                var scale = IsFinite( mScales[i] ) ? mScales[i] : Vector3.One;
+                var local = Matrix4x4.CreateFromQuaternion( rotation ) * Matrix4x4.CreateScale( scale );
+                local.Translation = IsFinite( mTranslations[i] ) ? mTranslations[i] : Vector3.Zero;
                 // Depth-first order guarantees parents come before children.
                 World[i] = mParents[i] >= 0 ? local * World[mParents[i]] : local;
             }
         }
+
+        private static bool IsFinite( Quaternion q ) => float.IsFinite( q.X ) && float.IsFinite( q.Y ) && float.IsFinite( q.Z ) && float.IsFinite( q.W );
+
+        private static bool IsFinite( Vector3 v ) => float.IsFinite( v.X ) && float.IsFinite( v.Y ) && float.IsFinite( v.Z );
 
         private static void Sample( AnimationLayer layer, float t, float duration, ref Vector3 translation, ref Quaternion rotation, ref Vector3 scale )
         {

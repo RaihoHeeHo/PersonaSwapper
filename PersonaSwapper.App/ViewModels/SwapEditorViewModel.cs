@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using PersonaSwapper.Core.Diagnostics;
 using PersonaSwapper.Core.Messages;
 using PersonaSwapper.Core.Swap;
 using PersonaSwapper.Core.Tables;
@@ -202,14 +203,16 @@ namespace PersonaSwapper.App.ViewModels
         {
             try
             {
+                Log.Step( $"Preview slot {slot.Pack} {slot.Slot}: {( slot.Empty ? "empty" : $"{slot.SourcePackPath} #{slot.SourceIndex}{( slot.Retarget ? " (retarget)" : "" )}" )}" );
                 var source = AnimationCache.Shared.Model( Project.Game.Archive, Project.SourceModel.Path );
                 var animation = slot.Empty ? null : SwapBuilder.BuildSlotAnimation( Project, slot, source.Model!, out _ );
                 mPreview.Show( Project.Game, Project.SourceModel.Path, animation );
             }
             catch ( Exception e )
             {
+                Log.Error( $"Can't build slot {slot.Pack} {slot.Slot} animation for preview", e );
                 mPreview.Show( Project.Game, Project.SourceModel.Path, null );
-                mPreview.Message = $"Can't preview this slot: {e.Message}";
+                mPreview.Message = $"Can't preview this slot: {e.Message} (see log)";
             }
         }
 

@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GFDLibrary;
 using GFDLibrary.Animations;
+using PersonaSwapper.Core.Diagnostics;
 using PersonaSwapper.Core.Game;
 using PersonaSwapper.Core.Swap;
 
@@ -36,10 +37,11 @@ namespace PersonaSwapper.App.ViewModels
             }
             catch ( Exception e )
             {
+                Log.Error( $"Preview couldn't load {modelPath}", e );
                 Model = null;
                 ModelPath = null;
                 Animation = null;
-                Message = $"Can't load {modelPath}: {e.Message}";
+                Message = $"Can't load {modelPath}: {e.Message} (see log)";
             }
             SceneChanged?.Invoke( this, EventArgs.Empty );
         }

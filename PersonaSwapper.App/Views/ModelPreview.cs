@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
 using Avalonia;
@@ -12,6 +13,7 @@ using GFDLibrary;
 using GFDLibrary.Animations;
 using OpenTK.Graphics.OpenGL4;
 using PersonaSwapper.App.ViewModels;
+using PersonaSwapper.Core.Diagnostics;
 using PersonaSwapper.Core.Preview;
 
 namespace PersonaSwapper.App.Views
@@ -84,9 +86,13 @@ namespace PersonaSwapper.App.Views
         {
             try
             {
+                Log.Step( $"OpenGL init: context {gl.ContextInfo.Version.Type} {gl.ContextInfo.Version.Major}.{gl.ContextInfo.Version.Minor}" );
                 GL.LoadBindings( new AvaloniaBindingsContext( gl ) );
+                Log.Info( $"GL_VERSION={GL.GetString( StringName.Version )}, GL_RENDERER={GL.GetString( StringName.Renderer )}, " +
+                          $"GL_VENDOR={GL.GetString( StringName.Vendor )}, GLSL={GL.GetString( StringName.ShadingLanguageVersion )}" );
                 var es = gl.ContextInfo.Version.Type == GlProfileType.OpenGLES;
                 mProgram = BuildProgram( es );
+                Log.Info( "Preview shaders compiled." );
                 mMvpLocation = GL.GetUniformLocation( mProgram, "uMvp" );
                 mViewLocation = GL.GetUniformLocation( mProgram, "uView" );
                 mTextureLocation = GL.GetUniformLocation( mProgram, "uTexture" );
@@ -98,6 +104,7 @@ namespace PersonaSwapper.App.Views
             catch ( Exception ex )
             {
                 mGlError = ex.Message;
+                Log.Error( "OpenGL init failed", ex );
                 if ( mViewModel != null ) mViewModel.Message = $"3D preview unavailable: {ex.Message}";
             }
         }
@@ -115,7 +122,24 @@ namespace PersonaSwapper.App.Views
         protected override void OnOpenGlRender( GlInterface gl, int fb )
         {
             if ( !mGlReady ) return;
+            try
+            {
+                Render( fb );
+            }
+            catch ( Exception ex )
+            {
+                // A model that fails to draw is dropped from the preview instead of taking the app down.
+                Log.Error( $"Preview render failed for {mViewModel?.ModelPath ?? "(no model)"} " +
+                           $"(animation: {( mAnimation == null ? "none" : $"{mAnimation.Duration:0.##}s" )}, t={mAnimationTime:0.00})", ex );
+                mSkinned = null;
+                try { DeleteMeshes(); } catch ( Exception ) { }
+                if ( mViewModel != null )
+                    mViewModel.Message = $"Preview error: {ex.GetType().Name}: {ex.Message} (see log)";
+            }
+        }
 
+        private void Render( int fb )
+        {
             var scaling = VisualRoot?.RenderScaling ?? 1.0;
             var width = Math.Max( 1, (int)( Bounds.Width * scaling ) );
             var height = Math.Max( 1, (int)( Bounds.Height * scaling ) );
@@ -127,8 +151,12 @@ namespace PersonaSwapper.App.Views
             GL.Clear( ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit );
 
             if ( mSceneDirty )
+            {
                 RebuildScene();
-            UploadDecodedTextures();
+                CheckGlError( "after building the scene" );
+            }
+            if ( UploadDecodedTextures() )
+                CheckGlError( "after uploading textures" );
 
             if ( mSkinned == null )
                 return;
@@ -141,7 +169,9 @@ namespace PersonaSwapper.App.Views
             if ( playing && mAnimation != null )
                 mAnimationTime += delta * ( mViewModel?.Speed ?? 1.0 );
 
+            if ( mFirstFrame ) Log.Step( "First frame: skinning" );
             mSkinned.Update( mAnimation, (float)mAnimationTime );
+            if ( mFirstFrame ) Log.Step( "First frame: drawing" );
 
             // Camera framed on the bind-pose bounds, orbiting the center.
             var distance = mRadius * 2.6f * mZoom;
@@ -199,8 +229,27 @@ namespace PersonaSwapper.App.Views
             GL.UseProgram( 0 );
             GL.Disable( EnableCap.DepthTest );
 
+            if ( mFirstFrame )
+            {
+                CheckGlError( "after the first frame" );
+                Log.Info( "First frame drawn." );
+                mFirstFrame = false;
+            }
+
             if ( ( playing && mAnimation != null ) || mDecoded.Count > mTextures.Count )
                 RequestNextFrameRendering();
+        }
+
+        private bool mFirstFrame;
+
+        private static void CheckGlError( string where )
+        {
+            for ( var i = 0; i < 8; i++ )
+            {
+                var error = GL.GetError();
+                if ( error == ErrorCode.NoError ) return;
+                Log.Warn( $"OpenGL error {error} {where}" );
+            }
         }
 
         private void DrawMesh( GpuMesh gpu )
@@ -219,9 +268,16 @@ namespace PersonaSwapper.App.Views
             mSceneDirty = false;
             var pack = mViewModel?.Model;
             mAnimation = mViewModel?.Animation;
+            var modelPath = mViewModel?.ModelPath ?? "(none)";
 
             if ( ReferenceEquals( pack, mBuiltFor ) && mSkinned != null )
+            {
+                Log.Info( $"Preview animation changed on {modelPath}: {( mAnimation == null ? "bind pose" : $"{mAnimation.Duration:0.##}s, {mAnimation.Controllers?.Count ?? 0} controllers" )}" );
+                mFirstFrame = true;
                 return; // same model, only the animation changed
+            }
+            Log.Step( $"Preview loading {modelPath}" );
+            mFirstFrame = true;
 
             DeleteMeshes();
             foreach ( var texture in mTextures.Values ) GL.DeleteTexture( texture );
@@ -234,13 +290,26 @@ namespace PersonaSwapper.App.Views
 
             try
             {
+                Log.Step( $"Building skinned model ({pack.Model.Nodes.Count()} nodes, {pack.Model.Bones?.Count ?? 0} bones, " +
+                          $"{pack.Materials?.Count ?? 0} materials, {pack.Textures?.Count ?? 0} textures)" );
                 mSkinned = new SkinnedModel( pack );
+                foreach ( var issue in mSkinned.Issues )
+                    Log.Warn( $"{modelPath}: {issue}" );
+                Log.Step( $"Posing bind pose ({mSkinned.Meshes.Count} meshes, {mSkinned.Meshes.Sum( m => m.Positions.Length )} vertices)" );
                 mSkinned.Update( null, 0 );
                 mCenter = ( mSkinned.BoundsMin + mSkinned.BoundsMax ) / 2;
                 mRadius = Math.Max( 1e-3f, ( mSkinned.BoundsMax - mSkinned.BoundsMin ).Length() / 2 );
+                Log.Info( $"Bounds {mSkinned.BoundsMin} - {mSkinned.BoundsMax}" );
+                if ( mSkinned.NonFiniteVertices > 0 )
+                    Log.Warn( $"{modelPath}: {mSkinned.NonFiniteVertices} vertices are NaN/infinite in the bind pose (bad weights or matrices); hidden" );
 
-                foreach ( var mesh in mSkinned.Meshes )
+                for ( var i = 0; i < mSkinned.Meshes.Count; i++ )
+                {
+                    var mesh = mSkinned.Meshes[i];
+                    Log.Step( $"Uploading mesh {i}: {mesh.Positions.Length} vertices, {mesh.Indices.Length / 3} triangles, material '{mesh.MaterialName}'" );
                     mMeshes.Add( CreateGpuMesh( mesh, pack ) );
+                }
+                Log.Info( $"Preview ready: {mMeshes.Count} meshes uploaded for {modelPath}" );
 
                 // Decode textures off the render thread; they're uploaded as they become ready.
                 if ( pack.Textures != null )
@@ -252,7 +321,20 @@ namespace PersonaSwapper.App.Views
                         foreach ( var (name, texture) in textures )
                         {
                             if ( !ReferenceEquals( mBuiltFor, pack ) ) return;
-                            mDecoded[name] = TextureDecoding.TryDecode( texture );
+                            try
+                            {
+                                var decoded = TextureDecoding.TryDecode( texture );
+                                Log.Info( decoded == null
+                                    ? $"Texture '{name}' ({texture.Format}, {texture.Data?.Length ?? 0} bytes): not decodable, drawn untextured"
+                                    : $"Texture '{name}' decoded {decoded.Width}x{decoded.Height}" );
+                                if ( !ReferenceEquals( mBuiltFor, pack ) ) return;
+                                mDecoded[name] = decoded;
+                            }
+                            catch ( Exception ex )
+                            {
+                                Log.Error( $"Texture '{name}' decode crashed", ex );
+                                mDecoded[name] = null;
+                            }
                             Avalonia.Threading.Dispatcher.UIThread.Post( RequestNextFrameRendering );
                         }
                     } );
@@ -260,8 +342,9 @@ namespace PersonaSwapper.App.Views
             }
             catch ( Exception ex )
             {
+                Log.Error( $"Preview couldn't build {modelPath}", ex );
                 mSkinned = null;
-                if ( mViewModel != null ) mViewModel.Message = $"Can't draw this model: {ex.Message}";
+                if ( mViewModel != null ) mViewModel.Message = $"Can't draw this model: {ex.Message} (see log)";
             }
         }
 
@@ -292,9 +375,12 @@ namespace PersonaSwapper.App.Views
             GL.EnableVertexAttribArray( 2 );
             GL.VertexAttribPointer( 2, 2, VertexAttribPointerType.Float, false, 8, 0 );
 
+            // Never hand the GPU an index past the vertex buffer: that reads out of bounds and can kill the process.
+            var indices = mesh.ValidIndices;
+            gpu.IndexCount = indices.Length;
             gpu.IndexBuffer = GL.GenBuffer();
             GL.BindBuffer( BufferTarget.ElementArrayBuffer, gpu.IndexBuffer );
-            GL.BufferData( BufferTarget.ElementArrayBuffer, mesh.Indices.Length * 4, mesh.Indices, BufferUsageHint.StaticDraw );
+            GL.BufferData( BufferTarget.ElementArrayBuffer, indices.Length * 4, indices, BufferUsageHint.StaticDraw );
 
             GL.BindVertexArray( 0 );
 
@@ -315,12 +401,21 @@ namespace PersonaSwapper.App.Views
             return gpu;
         }
 
-        private void UploadDecodedTextures()
+        /// <returns>True if anything was uploaded.</returns>
+        private bool UploadDecodedTextures()
         {
+            var uploaded = false;
             foreach ( var (name, decoded) in mDecoded )
             {
                 if ( mTextures.ContainsKey( name ) ) continue;
                 if ( decoded == null ) { mTextures[name] = 0; continue; }
+                if ( decoded.Rgba.Length < decoded.Width * decoded.Height * 4 )
+                {
+                    Log.Warn( $"Texture '{name}' has {decoded.Rgba.Length} bytes for {decoded.Width}x{decoded.Height}; skipped" );
+                    mTextures[name] = 0;
+                    continue;
+                }
+                uploaded = true;
 
                 var texture = GL.GenTexture();
                 GL.BindTexture( TextureTarget.Texture2D, texture );
@@ -334,6 +429,7 @@ namespace PersonaSwapper.App.Views
                 GL.BindTexture( TextureTarget.Texture2D, 0 );
                 mTextures[name] = texture;
             }
+            return uploaded;
         }
 
         private void DeleteMeshes()

@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using PersonaSwapper.Core.Diagnostics;
 using PersonaSwapper.Core.Game;
 using PersonaSwapper.Core.Swap;
 
@@ -63,9 +64,34 @@ namespace PersonaSwapper.App.ViewModels
 
         partial void OnDestinationSearchChanged( string value ) => RefreshDestinations();
 
-        partial void OnSelectedSourceChanged( ModelEntry? value ) => _ = RebuildEditorAsync();
+        partial void OnSelectedSourceChanged( ModelEntry? value )
+        {
+            Log.Info( $"Source model selected: {value?.Path ?? "(none)"}" );
+            _ = RebuildEditorAsync();
+        }
 
-        partial void OnSelectedDestinationChanged( PersonaEntry? value ) => _ = RebuildEditorAsync();
+        partial void OnSelectedDestinationChanged( PersonaEntry? value )
+        {
+            Log.Info( $"Destination persona selected: {( value == null ? "(none)" : $"{value.Id} {value.Name}" )}" );
+            _ = RebuildEditorAsync();
+        }
+
+        public string LogPath => Log.FilePath;
+
+        /// <summary>Opens the log folder in Finder (Explorer / file manager elsewhere).</summary>
+        [RelayCommand]
+        private void OpenLog()
+        {
+            try
+            {
+                var opener = OperatingSystem.IsMacOS() ? "open" : OperatingSystem.IsWindows() ? "explorer" : "xdg-open";
+                System.Diagnostics.Process.Start( new System.Diagnostics.ProcessStartInfo( opener, $"\"{Log.Folder}\"" ) { UseShellExecute = false } );
+            }
+            catch ( Exception e )
+            {
+                Status = $"Log is at {Log.FilePath} ({e.Message})";
+            }
+        }
 
         [RelayCommand]
         public async Task LoadGameAsync()
@@ -75,7 +101,9 @@ namespace PersonaSwapper.App.ViewModels
             try
             {
                 var folder = GameFolder;
+                Log.Step( $"Loading game from {folder}" );
                 var game = await Task.Run( () => GameData.Load( folder ) );
+                Log.Info( $"Game loaded: {game.Archive.Paths.Count} files, {game.Catalog.Models.Count} models, {game.Catalog.Personas.Count} personas" );
                 Game?.Dispose();
                 Game = game;
                 Lookups = await Task.Run( () => new Lookups( game ) );
@@ -92,6 +120,7 @@ namespace PersonaSwapper.App.ViewModels
             }
             catch ( Exception e )
             {
+                Log.Error( "Loading the game failed", e );
                 IsGameLoaded = false;
                 Status = $"Couldn't load the game: {e.Message}";
             }
@@ -129,6 +158,7 @@ namespace PersonaSwapper.App.ViewModels
             }
             catch ( Exception e )
             {
+                Log.Error( "Export failed", e );
                 Status = $"Export failed: {e.Message}";
             }
             finally
@@ -205,6 +235,7 @@ namespace PersonaSwapper.App.ViewModels
             }
             catch ( Exception e )
             {
+                Log.Error( $"Preparing {source.Path} -> persona {destination.Id} failed", e );
                 Editor = null;
                 Status = $"Couldn't prepare the swap: {e.Message}";
             }

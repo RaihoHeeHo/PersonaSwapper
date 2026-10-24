@@ -59,6 +59,10 @@ namespace PersonaSwapper.Cli
                     Render( game, args[2], args[3], int.Parse( args[4] ), args[5], args.Skip( 6 ).Select( float.Parse ).DefaultIfEmpty( 0f ).ToArray() );
                     return 0;
 
+                case "previewcheck":
+                    // previewcheck <start> <count> [filter]
+                    return PreviewCheck( game, int.Parse( args[2] ), int.Parse( args[3] ), args.Length > 4 ? args[4] : null );
+
                 case "materials":
                     Materials( game, args.Skip( 2 ).ToArray() );
                     return 0;
@@ -171,6 +175,62 @@ namespace PersonaSwapper.Cli
                 System.IO.File.WriteAllBytes( file, png );
                 Console.WriteLine( $"{file}: {skinned.Meshes.Count} meshes, {skinned.Meshes.Sum( m => m.Positions.Length )} verts, skin {skinMs} ms, bounds {skinned.BoundsMin} - {skinned.BoundsMax}" );
             }
+        }
+
+        /// <summary>Runs everything the preview does for a model, across many models, and reports what breaks.</summary>
+        private static int PreviewCheck( GameData game, int start, int count, string? filter )
+        {
+            PersonaSwapper.Core.Diagnostics.Log.EchoToConsole = false;
+            var models = game.Catalog.Models
+                .Where( m => filter == null || m.Path.Contains( filter, StringComparison.OrdinalIgnoreCase ) )
+                .Skip( start ).Take( count ).ToList();
+            int failures = 0, withIssues = 0;
+            var sw = Stopwatch.StartNew();
+            foreach ( var model in models )
+            {
+                var stage = "parse";
+                try
+                {
+                    var pack = AnimationCache.Shared.Model( game.Archive, model.Path );
+                    if ( pack.Model == null ) { Console.WriteLine( $"NOMODEL {model.Path}" ); continue; }
+                    stage = "build";
+                    var skinned = new SkinnedModel( pack );
+                    stage = "bind pose";
+                    skinned.Update( null, 0 );
+                    var ownPack = SwapProject.OwnAnimationPacks( model ).FirstOrDefault();
+                    if ( ownPack != null )
+                    {
+                        stage = $"animation {System.IO.Path.GetFileName( ownPack )}";
+                        var anims = AnimationCache.Shared.FreshPack( game.Archive, ownPack ).Animations;
+                        var anim = anims?.FirstOrDefault( a => a.Controllers?.Count > 0 );
+                        if ( anim != null )
+                            foreach ( var t in new[] { 0f, anim.Duration * 0.37f, anim.Duration * 0.81f } )
+                                skinned.Update( anim, t );
+                    }
+                    stage = "textures";
+                    var undecodable = 0;
+                    if ( pack.Textures != null )
+                        foreach ( var (_, tex) in pack.Textures )
+                            if ( TextureDecoding.TryDecode( tex ) == null ) undecodable++;
+                    var bad = !float.IsFinite( skinned.BoundsMin.X ) || !float.IsFinite( skinned.BoundsMax.Y ) || skinned.NonFiniteVertices > 0;
+                    if ( skinned.NonFiniteVertices > 0 ) skinned.Issues.Add( $"{skinned.NonFiniteVertices} non-finite vertices" );
+                    if ( skinned.Issues.Count > 0 || undecodable > 0 || bad )
+                    {
+                        withIssues++;
+                        Console.WriteLine( $"ISSUES {model.Path}: " + string.Join( "; ", skinned.Issues.Take( 4 ) ) +
+                                           ( undecodable > 0 ? $"; {undecodable} undecodable textures" : "" ) + ( bad ? "; non-finite bounds" : "" ) );
+                    }
+                }
+                catch ( Exception e )
+                {
+                    failures++;
+                    Console.WriteLine( $"FAIL {model.Path} at {stage}: {e.GetType().Name}: {e.Message}" );
+                    Console.WriteLine( "     " + ( e.StackTrace ?? "" ).Split( '\n' ).FirstOrDefault()?.Trim() );
+                }
+                AnimationCache.Shared.Clear(); // keep memory flat across thousands of models
+            }
+            Console.WriteLine( $"Checked {models.Count} models in {sw.Elapsed.TotalSeconds:0}s: {failures} failed, {withIssues} with data issues" );
+            return 0;
         }
 
         /// <summary>Material alpha settings vs. how much of each diffuse texture is low-alpha.</summary>

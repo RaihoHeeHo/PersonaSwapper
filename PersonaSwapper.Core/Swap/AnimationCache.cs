@@ -6,6 +6,7 @@ using System.Linq;
 using GFDLibrary;
 using GFDLibrary.Animations;
 using GFDLibrary.Models;
+using PersonaSwapper.Core.Diagnostics;
 using PersonaSwapper.Core.Game;
 
 namespace PersonaSwapper.Core.Swap
@@ -36,15 +37,37 @@ namespace PersonaSwapper.Core.Swap
         public ModelPack Model( GameArchive archive, string path )
             => mModels.GetOrAdd( path, p =>
             {
-                using var stream = new MemoryStream( Bytes( archive, p ) );
-                return Resource.Load<ModelPack>( stream ) ?? throw new InvalidDataException( $"{p} isn't a model." );
+                var bytes = Bytes( archive, p );
+                Log.Step( $"Parsing model {p} ({bytes.Length:N0} bytes)" );
+                try
+                {
+                    using var stream = new MemoryStream( bytes );
+                    var pack = Resource.Load<ModelPack>( stream ) ?? throw new InvalidDataException( $"{p} isn't a model." );
+                    Log.Info( $"Parsed {p}: version 0x{pack.Version:X8}, model {( pack.Model != null ? "yes" : "no" )}, " +
+                              $"{pack.Textures?.Count ?? 0} textures, {pack.Materials?.Count ?? 0} materials" );
+                    return pack;
+                }
+                catch ( Exception e )
+                {
+                    Log.Error( $"Parsing {p} failed", e );
+                    throw;
+                }
             } );
 
         /// <summary>A private copy of a pack, safe to modify.</summary>
         public AnimationPack FreshPack( GameArchive archive, string path )
         {
             using var stream = new MemoryStream( Bytes( archive, path ) );
-            var resource = Resource.Load( stream, false );
+            Resource resource;
+            try
+            {
+                resource = Resource.Load( stream, false );
+            }
+            catch ( Exception e )
+            {
+                Log.Error( $"Parsing animation pack {path} failed", e );
+                throw;
+            }
             return resource switch
             {
                 AnimationPack pack => pack,

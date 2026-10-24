@@ -61,6 +61,21 @@ Lore and scale details:
   "Match original size" sets `original scale × destination model height ÷ source model height`, so the new model
   stands as tall in battle as the persona it replaces.
 
+## Troubleshooting
+
+The app writes a log to `~/Library/Logs/PersonaSwapper/persona-swapper.log` (the **Log** button in the status bar
+opens the folder; the previous run is kept as `persona-swapper.previous.log`). Each line is written to disk immediately:
+- `STEP` lines mark work about to happen (parsing a model, uploading mesh N, first frame). If the app dies outright,
+  the last `STEP` shows where.
+- `CRASH` blocks hold the full exception and stack trace for anything unhandled; the app keeps running when it can.
+- `WARN` lines flag bad model data that was worked around (out-of-range triangles, NaN vertices, undecodable
+  textures) and OpenGL errors.
+- The OpenGL driver, version and renderer are logged when the preview starts.
+
+`pswap <game-folder> previewcheck <start> <count> [filter]` runs the preview's loading, skinning, animation and texture
+code over many models outside the GUI. Across all 2,194 models: no failures; 14 models have a few NaN vertices
+(hidden in the preview) and one texture can't be decoded (drawn untextured).
+
 ## Not done yet
 
 - Bone-name mapping for retargeting between different skeletons.

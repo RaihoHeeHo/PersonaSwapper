@@ -332,6 +332,8 @@
     <Border Grid.Row="2" Padding="12,6" BorderThickness="0,1,0,0"
             BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
       <DockPanel>
+        <Button DockPanel.Dock="Right" Margin="8,0,0,0" Padding="10,2" Content="Log" Command="{Binding OpenLogCommand}"
+                ToolTip.Tip="{Binding LogPath}" />
         <ProgressBar DockPanel.Dock="Right" Width="120" IsIndeterminate="True" IsVisible="{Binding IsBusy}" />
         <TextBlock Text="{Binding Status}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
       </DockPanel>
