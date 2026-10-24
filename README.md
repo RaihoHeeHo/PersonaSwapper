@@ -38,8 +38,14 @@ Findings this is based on (checked against the game files):
   Slot 0 is the long idle loop and slot 5 the appearance.
 - Personas and Shadows share one slot layout: in the base game, persona slot N is a copy of the matching Shadow's slot N.
   So a Shadow or persona source uses its own animations slot-for-slot with no retargeting.
-- Other sources (party members, NPCs) have different skeletons. The "Bones" column shows how many of an animation's
-  bones exist on the source model; low numbers mean that motion won't play properly on it.
+- Every slot defaults to the source model's own animations ("own" packs in the table): a Shadow's `BEM` packs, a persona's
+  `BPS`/`GT`, or a character's `BATTLE`/`FIELD`/`EVENT`/`LIFE` subfolder packs plus `COMMON_ANIM/BCMN<id>`/`ACMN<id>`
+  (battle packs for the model's costume first, e.g. Joker's `BB0001_051.GAP` with 90 battle animations). The destination
+  persona's packs are still offered, labelled "(retarget)".
+- The "Bones" column shows how many of an animation's bones exist on the source model; low numbers mean that motion
+  won't play properly on it.
+- Preview materials follow the game's settings: P5R stores other data in the diffuse alpha of most opaque materials
+  (310 of 351 sampled), so alpha is only used for alpha-tested, transparent or additive materials.
 
 ## Projects
 

@@ -59,6 +59,10 @@ namespace PersonaSwapper.Cli
                     Render( game, args[2], args[3], int.Parse( args[4] ), args[5], args.Skip( 6 ).Select( float.Parse ).DefaultIfEmpty( 0f ).ToArray() );
                     return 0;
 
+                case "materials":
+                    Materials( game, args.Skip( 2 ).ToArray() );
+                    return 0;
+
                 case "slotmap":
                     SlotMap( game, args.Skip( 2 ).Select( int.Parse ).ToArray() );
                     return 0;
@@ -167,6 +171,41 @@ namespace PersonaSwapper.Cli
                 System.IO.File.WriteAllBytes( file, png );
                 Console.WriteLine( $"{file}: {skinned.Meshes.Count} meshes, {skinned.Meshes.Sum( m => m.Positions.Length )} verts, skin {skinMs} ms, bounds {skinned.BoundsMin} - {skinned.BoundsMax}" );
             }
+        }
+
+        /// <summary>Material alpha settings vs. how much of each diffuse texture is low-alpha.</summary>
+        private static void Materials( GameData game, string[] filters )
+        {
+            var models = game.Catalog.Models.Where( m => filters.Length == 0 ? m.Category == ModelCategory.Enemy : filters.Any( f => m.Path.Contains( f, StringComparison.OrdinalIgnoreCase ) ) ).Take( 40 ).ToList();
+            var tally = new Dictionary<string, (int Count, int LowAlphaTextures)>();
+            foreach ( var model in models )
+            {
+                var pack = AnimationCache.Shared.Model( game.Archive, model.Path );
+                if ( pack.Materials == null ) continue;
+                foreach ( var (name, material) in pack.Materials )
+                {
+                    var key = $"draw={material.DrawMethod} alphaTest={( material.Flags & GFDLibrary.Materials.MaterialFlags.AlphaTest ) != 0} transp={( material.Flags & GFDLibrary.Materials.MaterialFlags.Transparency ) != 0}";
+                    double low = 0;
+                    var texName = material.DiffuseMap?.Name;
+                    if ( texName != null && pack.Textures != null && pack.Textures.TryGetValue( texName, out var tex ) )
+                    {
+                        var decoded = TextureDecoding.TryDecode( tex );
+                        if ( decoded != null )
+                        {
+                            var n = decoded.Width * decoded.Height; var c = 0;
+                            for ( var i = 0; i < n; i++ ) if ( decoded.Rgba[i * 4 + 3] < 77 ) c++;
+                            low = (double)c / n;
+                        }
+                    }
+                    var t = tally.TryGetValue( key, out var v ) ? v : (Count: 0, LowAlphaTextures: 0);
+                    tally[key] = (t.Count + 1, t.LowAlphaTextures + ( low > 0.05 ? 1 : 0 ));
+                    if ( filters.Length > 0 )
+                        Console.WriteLine( $"  {model.FileName} {name}: {key} clip={material.AlphaClip} mode={material.AlphaClipMode} tex={texName} lowAlpha={low:P0}" );
+                }
+            }
+            Console.WriteLine( $"{models.Count} models" );
+            foreach ( var (k, v) in tally.OrderByDescending( x => x.Value.Count ) )
+                Console.WriteLine( $"  {k}: {v.Count} materials, {v.LowAlphaTextures} with >5% low-alpha texels" );
         }
 
         private static int Swap( GameData game, string sourcePath, int personaId, string modsFolder )

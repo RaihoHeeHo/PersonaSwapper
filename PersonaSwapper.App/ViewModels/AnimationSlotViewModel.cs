@@ -9,6 +9,12 @@ using PersonaSwapper.Core.Swap;
 
 namespace PersonaSwapper.App.ViewModels
 {
+    /// <summary>An animation pack choice, labelled with where it comes from.</summary>
+    public sealed record PackOption( string Path, string Label )
+    {
+        public override string ToString() => Label;
+    }
+
     /// <summary>One row of the animation table: a destination slot and where its motion comes from.</summary>
     public sealed partial class AnimationSlotViewModel : ObservableObject
     {
@@ -23,12 +29,12 @@ namespace PersonaSwapper.App.ViewModels
             mOwner = owner;
             Slot = slot;
 
-            foreach ( var path in RelevantPacks() )
-                PackOptions.Add( path );
-            if ( !PackOptions.Contains( slot.SourcePackPath, StringComparer.OrdinalIgnoreCase ) )
-                PackOptions.Insert( 0, slot.SourcePackPath );
+            foreach ( var option in RelevantPacks() )
+                PackOptions.Add( option );
+            if ( !PackOptions.Any( o => o.Path.Equals( slot.SourcePackPath, StringComparison.OrdinalIgnoreCase ) ) )
+                PackOptions.Insert( 0, Label( slot.SourcePackPath ) );
 
-            _selectedPack = PackOptions.First( p => p.Equals( slot.SourcePackPath, StringComparison.OrdinalIgnoreCase ) );
+            _selectedPack = PackOptions.First( o => o.Path.Equals( slot.SourcePackPath, StringComparison.OrdinalIgnoreCase ) );
             LoadAnimationOptions();
             UpdateCoverage();
         }
@@ -39,11 +45,11 @@ namespace PersonaSwapper.App.ViewModels
 
         public string SlotLabel => $"{PackName} {Slot.Slot}" + ( Slot.Pack == AnimationPackKind.Battle ? BattleHint( Slot.Slot ) : "" );
 
-        public ObservableCollection<string> PackOptions { get; } = new();
+        public ObservableCollection<PackOption> PackOptions { get; } = new();
 
         public ObservableCollection<AnimationInfo> AnimationOptions { get; } = new();
 
-        [ObservableProperty] private string _selectedPack;
+        [ObservableProperty] private PackOption _selectedPack;
         [ObservableProperty] private AnimationInfo? _selectedAnimation;
         [ObservableProperty] private string _coverage = "";
         [ObservableProperty] private bool _coverageWarning;
@@ -65,16 +71,16 @@ namespace PersonaSwapper.App.ViewModels
         /// <summary>Adds any pack from the game (typed or picked in the search box) to this row's choices and selects it.</summary>
         public void UsePack( string path )
         {
-            if ( !PackOptions.Contains( path, StringComparer.OrdinalIgnoreCase ) )
-                PackOptions.Insert( 0, path );
-            SelectedPack = PackOptions.First( p => p.Equals( path, StringComparison.OrdinalIgnoreCase ) );
+            if ( !PackOptions.Any( o => o.Path.Equals( path, StringComparison.OrdinalIgnoreCase ) ) )
+                PackOptions.Insert( 0, Label( path ) );
+            SelectedPack = PackOptions.First( o => o.Path.Equals( path, StringComparison.OrdinalIgnoreCase ) );
         }
 
-        partial void OnSelectedPackChanged( string value )
+        partial void OnSelectedPackChanged( PackOption value )
         {
-            if ( mUpdating || string.IsNullOrEmpty( value ) ) return;
-            Slot.SourcePackPath = value;
-            Slot.RigModelPath = RigModelFor( value );
+            if ( mUpdating || value == null ) return;
+            Slot.SourcePackPath = value.Path;
+            Slot.RigModelPath = RigModelFor( value.Path );
             Slot.Retarget = Slot.RigModelPath != null &&
                             !Slot.RigModelPath.Equals( mOwner.Project.SourceModel.Path, StringComparison.OrdinalIgnoreCase );
             OnPropertyChanged( nameof( Retarget ) );
@@ -142,18 +148,30 @@ namespace PersonaSwapper.App.ViewModels
             }
         }
 
-        /// <summary>Packs worth offering first: the source model's folder and the destination persona's folder.</summary>
-        private IEnumerable<string> RelevantPacks()
+        /// <summary>The source model's own packs (the animations it plays in game) first, then the destination persona's.</summary>
+        private IEnumerable<PackOption> RelevantPacks()
         {
             var project = mOwner.Project;
             var seen = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
-            foreach ( var path in project.SourceModel.AnimationPaths )
-                if ( seen.Add( path ) ) yield return path;
+            foreach ( var path in SwapProject.OwnAnimationPacks( project.SourceModel ) )
+                if ( seen.Add( path ) ) yield return Label( path );
             foreach ( var kind in new[] { AnimationPackKind.Battle, AnimationPackKind.Secondary } )
             {
                 var path = project.DestinationPackPath( kind );
-                if ( path != null && seen.Add( path ) ) yield return path;
+                if ( path != null && seen.Add( path ) ) yield return Label( path );
             }
+        }
+
+        private PackOption Label( string path )
+        {
+            var project = mOwner.Project;
+            var name = Path.GetFileName( path );
+            var folder = path.Substring( 0, path.LastIndexOf( '/' ) );
+            if ( IsOwnPack( path ) )
+                return new PackOption( path, SwapProject.IsBattlePack( path ) ? $"{name}  · own, battle" : $"{name}  · own" );
+            if ( folder.Equals( project.Destination.Folder, StringComparison.OrdinalIgnoreCase ) )
+                return new PackOption( path, $"{name}  · {project.Destination.Name}'s (retarget)" );
+            return new PackOption( path, $"{name}  · other" );
         }
 
         /// <summary>The model a pack's animations were authored for, from the game's naming conventions.</summary>
@@ -163,8 +181,8 @@ namespace PersonaSwapper.App.ViewModels
             var folder = packPath.Substring( 0, packPath.LastIndexOf( '/' ) );
             var file = Path.GetFileNameWithoutExtension( packPath );
 
-            if ( folder.Equals( mOwner.Project.SourceModel.Path.Substring( 0, mOwner.Project.SourceModel.Path.LastIndexOf( '/' ) ), StringComparison.OrdinalIgnoreCase ) &&
-                 mOwner.Project.SourceModel.Category is not Core.Game.ModelCategory.Character )
+            // Packs that belong to the source model animate it (a character's costumes share one skeleton).
+            if ( IsOwnPack( packPath ) )
                 return mOwner.Project.SourceModel.Path;
 
             var m = sNumbered.Match( file );
@@ -184,6 +202,9 @@ namespace PersonaSwapper.App.ViewModels
 
             return archive.Find( folder, ".GMD" ).OrderBy( p => p, StringComparer.OrdinalIgnoreCase ).FirstOrDefault();
         }
+
+        private bool IsOwnPack( string path )
+            => mOwner.Project.SourceModel.AnimationPaths.Contains( path, StringComparer.OrdinalIgnoreCase );
 
         // From comparing all 302 personas: slots 1-4 are unused, 0 is the longest (looping) motion.
         private static string BattleHint( int slot ) => slot switch

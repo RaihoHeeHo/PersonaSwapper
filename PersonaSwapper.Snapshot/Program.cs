@@ -38,7 +38,7 @@ namespace PersonaSwapper.Snapshot
             Pump( 0.3 );
             Capture( window, outDir, "1-loaded" );
 
-            vm.SourceCategory = 2;
+            vm.SourceCategory = 0;
             vm.SelectedSource = vm.SourceModels.First( m => m.Path.Equals( args[2], StringComparison.OrdinalIgnoreCase ) );
             vm.SelectedDestination = vm.Destinations.First( p => p.Id == int.Parse( args[3] ) );
             WaitUntil( () => vm.Editor != null && !vm.IsBusy, 60 );

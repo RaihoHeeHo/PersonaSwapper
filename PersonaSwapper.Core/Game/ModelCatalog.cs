@@ -80,12 +80,26 @@ namespace PersonaSwapper.Core.Game
                 }
             }
 
+            // Character animations live in subfolders (BATTLE, FIELD, EVENT, LIFE) and in COMMON_ANIM/BCMN<id>, ACMN<id>.
+            var characterGaps = new Dictionary<int, IReadOnlyList<string>>();
+            IReadOnlyList<string> CharacterGaps( int id ) =>
+                characterGaps.TryGetValue( id, out var cached ) ? cached : characterGaps[id] = allPaths
+                    .Where( p => p.EndsWith( ".GAP", StringComparison.OrdinalIgnoreCase ) &&
+                                 ( p.StartsWith( $"MODEL/CHARACTER/{id:D4}/", StringComparison.OrdinalIgnoreCase ) ||
+                                   p.StartsWith( $"MODEL/CHARACTER/COMMON_ANIM/BCMN{id:D4}", StringComparison.OrdinalIgnoreCase ) ||
+                                   p.StartsWith( $"MODEL/CHARACTER/COMMON_ANIM/ACMN{id:D4}", StringComparison.OrdinalIgnoreCase ) ) )
+                    .OrderBy( p => p, StringComparer.OrdinalIgnoreCase )
+                    .ToList();
+
             var models = new List<ModelEntry>();
             foreach ( var path in allPaths.Where( p => p.EndsWith( ".GMD", StringComparison.OrdinalIgnoreCase ) ) )
             {
                 var folder = path.Substring( 0, path.LastIndexOf( '/' ) );
                 var gaps = gapsByFolder.TryGetValue( folder, out var g ) ? g : Array.Empty<string>();
                 var file = System.IO.Path.GetFileName( path );
+                var characterMatch = sCharacterFile.Match( path );
+                if ( characterMatch.Success && !folder.Contains( "/EVENT", StringComparison.OrdinalIgnoreCase ) )
+                    gaps = CharacterGaps( int.Parse( characterMatch.Groups[1].Value ) );
 
                 Match m;
                 if ( ( m = sPersonaFile.Match( path ) ).Success )

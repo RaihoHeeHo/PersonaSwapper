@@ -262,7 +262,7 @@
               <TabItem Header="Animations">
                 <DockPanel Margin="0,8,0,0">
                   <TextBlock DockPanel.Dock="Top" Classes="hint" Margin="0,0,0,8"
-                             Text="Each row is one of the persona's animation slots. Select a row to preview it on the source model. 'Bones' shows how many animated bones exist on the source model; few means the motion won't fit." />
+                             Text="Each row is one of the persona's animation slots, filled from the source model's own animations ('own' packs) by default. Select a row to preview it. 'Bones' shows how many animated bones exist on the source model; few means the motion won't fit." />
                   <Grid DockPanel.Dock="Bottom" ColumnDefinitions="Auto,*" Margin="0,8,0,0">
                     <TextBlock Grid.Column="0" Classes="fieldLabel" Text="Use any pack for the selected slot" />
                     <AutoCompleteBox Grid.Column="1" x:Name="PackSearch" FilterMode="Contains" MinimumPrefixLength="2" MaxDropDownHeight="320"
@@ -272,22 +272,22 @@
                   </Grid>
                   <DataGrid ItemsSource="{Binding SlotRows}" SelectedItem="{Binding SelectedSlot}" AutoGenerateColumns="False" CanUserSortColumns="False">
                     <DataGrid.Columns>
-                      <DataGridTextColumn Header="Slot" Binding="{Binding SlotLabel}" IsReadOnly="True" Width="150" />
+                      <DataGridTextColumn Header="Slot" Binding="{Binding SlotLabel}" IsReadOnly="True" Width="128" />
                       <DataGridTemplateColumn Header="Source pack" Width="*">
                         <DataGridTemplateColumn.CellTemplate>
                           <DataTemplate x:DataType="vm:AnimationSlotViewModel">
-                            <ComboBox HorizontalAlignment="Stretch" IsEnabled="{Binding IsActive}"
+                            <ComboBox HorizontalAlignment="Stretch" IsEnabled="{Binding IsActive}" MaxDropDownHeight="420"
                                       ItemsSource="{Binding PackOptions}" SelectedItem="{Binding SelectedPack}">
                               <ComboBox.ItemTemplate>
-                                <DataTemplate x:DataType="x:String">
-                                  <TextBlock Text="{Binding Converter={x:Static views:Converters.FileName}}" ToolTip.Tip="{Binding}" />
+                                <DataTemplate x:DataType="vm:PackOption">
+                                  <TextBlock Text="{Binding Label}" ToolTip.Tip="{Binding Path}" TextTrimming="CharacterEllipsis" />
                                 </DataTemplate>
                               </ComboBox.ItemTemplate>
                             </ComboBox>
                           </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                       </DataGridTemplateColumn>
-                      <DataGridTemplateColumn Header="Animation" Width="150">
+                      <DataGridTemplateColumn Header="Animation" Width="118">
                         <DataGridTemplateColumn.CellTemplate>
                           <DataTemplate x:DataType="vm:AnimationSlotViewModel">
                             <ComboBox HorizontalAlignment="Stretch" IsEnabled="{Binding IsActive}"
@@ -295,21 +295,21 @@
                           </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                       </DataGridTemplateColumn>
-                      <DataGridTemplateColumn Header="Retarget" Width="82">
+                      <DataGridTemplateColumn Header="Retarget" Width="80">
                         <DataGridTemplateColumn.CellTemplate>
                           <DataTemplate x:DataType="vm:AnimationSlotViewModel">
                             <CheckBox HorizontalAlignment="Center" IsEnabled="{Binding IsActive}" IsChecked="{Binding Retarget}" />
                           </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                       </DataGridTemplateColumn>
-                      <DataGridTemplateColumn Header="Empty" Width="66">
+                      <DataGridTemplateColumn Header="Empty" Width="62">
                         <DataGridTemplateColumn.CellTemplate>
                           <DataTemplate x:DataType="vm:AnimationSlotViewModel">
                             <CheckBox HorizontalAlignment="Center" IsChecked="{Binding Empty}" />
                           </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                       </DataGridTemplateColumn>
-                      <DataGridTemplateColumn Header="Bones" Width="76">
+                      <DataGridTemplateColumn Header="Bones" Width="72">
                         <DataGridTemplateColumn.CellTemplate>
                           <DataTemplate x:DataType="vm:AnimationSlotViewModel">
                             <TextBlock VerticalAlignment="Center" Margin="6,0" Text="{Binding Coverage}"

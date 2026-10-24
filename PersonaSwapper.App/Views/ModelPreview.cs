@@ -23,11 +23,23 @@ namespace PersonaSwapper.App.Views
     /// </summary>
     public sealed class ModelPreview : OpenGlControlBase
     {
+        /// <summary>How a mesh's material uses texture alpha (P5R stores other data in alpha on most opaque materials).</summary>
+        private enum AlphaUse
+        {
+            Ignore = 0,   // opaque: alpha is not transparency
+            Clip = 1,     // alpha test against the material's threshold
+            Blend = 2,    // alpha blending
+            Additive = 3, // glow/effect meshes: added on top
+        }
+
         private sealed class GpuMesh
         {
             public SkinnedMesh Mesh = null!;
             public int Vao, PositionBuffer, NormalBuffer, UvBuffer, IndexBuffer, IndexCount;
             public string? TextureName;
+            public AlphaUse Alpha;
+            public float AlphaReference;
+            public bool DoubleSided = true;
         }
 
         private readonly List<GpuMesh> mMeshes = new();
@@ -43,7 +55,7 @@ namespace PersonaSwapper.App.Views
         private double mAnimationTime;
         private double mLastFrame;
 
-        private int mProgram, mMvpLocation, mViewLocation, mTextureLocation, mHasTextureLocation;
+        private int mProgram, mMvpLocation, mViewLocation, mTextureLocation, mHasTextureLocation, mAlphaModeLocation, mAlphaRefLocation;
         private bool mGlReady;
         private string? mGlError;
 
@@ -79,6 +91,8 @@ namespace PersonaSwapper.App.Views
                 mViewLocation = GL.GetUniformLocation( mProgram, "uView" );
                 mTextureLocation = GL.GetUniformLocation( mProgram, "uTexture" );
                 mHasTextureLocation = GL.GetUniformLocation( mProgram, "uHasTexture" );
+                mAlphaModeLocation = GL.GetUniformLocation( mProgram, "uAlphaMode" );
+                mAlphaRefLocation = GL.GetUniformLocation( mProgram, "uAlphaRef" );
                 mGlReady = true;
             }
             catch ( Exception ex )
@@ -153,14 +167,32 @@ namespace PersonaSwapper.App.Views
                 GL.BufferSubData( BufferTarget.ArrayBuffer, IntPtr.Zero, gpu.Mesh.Positions.Length * 12, gpu.Mesh.Positions );
                 GL.BindBuffer( BufferTarget.ArrayBuffer, gpu.NormalBuffer );
                 GL.BufferSubData( BufferTarget.ArrayBuffer, IntPtr.Zero, gpu.Mesh.Normals.Length * 12, gpu.Mesh.Normals );
-
-                var hasTexture = gpu.TextureName != null && mTextures.TryGetValue( gpu.TextureName, out var texture );
-                GL.Uniform1( mHasTextureLocation, hasTexture ? 1 : 0 );
-                GL.BindTexture( TextureTarget.Texture2D, hasTexture ? mTextures[gpu.TextureName!] : 0 );
-
-                GL.BindVertexArray( gpu.Vao );
-                GL.DrawElements( PrimitiveType.Triangles, gpu.IndexCount, DrawElementsType.UnsignedInt, IntPtr.Zero );
             }
+
+            // Solid (and alpha-tested) meshes first, then blended/additive ones without writing depth.
+            GL.Disable( EnableCap.Blend );
+            GL.DepthMask( true );
+            foreach ( var gpu in mMeshes )
+                if ( gpu.Alpha is AlphaUse.Ignore or AlphaUse.Clip )
+                    DrawMesh( gpu );
+
+            GL.Enable( EnableCap.Blend );
+            GL.DepthMask( false );
+            foreach ( var gpu in mMeshes )
+            {
+                if ( gpu.Alpha == AlphaUse.Blend )
+                {
+                    GL.BlendFunc( BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha );
+                    DrawMesh( gpu );
+                }
+                else if ( gpu.Alpha == AlphaUse.Additive )
+                {
+                    GL.BlendFunc( BlendingFactor.SrcAlpha, BlendingFactor.One );
+                    DrawMesh( gpu );
+                }
+            }
+            GL.DepthMask( true );
+            GL.Disable( EnableCap.Blend );
 
             GL.BindVertexArray( 0 );
             GL.BindTexture( TextureTarget.Texture2D, 0 );
@@ -169,6 +201,17 @@ namespace PersonaSwapper.App.Views
 
             if ( ( playing && mAnimation != null ) || mDecoded.Count > mTextures.Count )
                 RequestNextFrameRendering();
+        }
+
+        private void DrawMesh( GpuMesh gpu )
+        {
+            var hasTexture = gpu.TextureName != null && mTextures.TryGetValue( gpu.TextureName, out var texture ) && texture != 0;
+            GL.Uniform1( mHasTextureLocation, hasTexture ? 1 : 0 );
+            GL.BindTexture( TextureTarget.Texture2D, hasTexture ? mTextures[gpu.TextureName!] : 0 );
+            GL.Uniform1( mAlphaModeLocation, (int)gpu.Alpha );
+            GL.Uniform1( mAlphaRefLocation, gpu.AlphaReference );
+            GL.BindVertexArray( gpu.Vao );
+            GL.DrawElements( PrimitiveType.Triangles, gpu.IndexCount, DrawElementsType.UnsignedInt, IntPtr.Zero );
         }
 
         private void RebuildScene()
@@ -256,7 +299,19 @@ namespace PersonaSwapper.App.Views
             GL.BindVertexArray( 0 );
 
             if ( mesh.MaterialName != null && pack.Materials != null && pack.Materials.TryGetValue( mesh.MaterialName, out var material ) )
+            {
                 gpu.TextureName = material.DiffuseMap?.Name;
+                var flags = material.Flags;
+                if ( material.DrawMethod is GFDLibrary.Materials.MaterialDrawMethod.Add )
+                    gpu.Alpha = AlphaUse.Additive;
+                else if ( material.DrawMethod != GFDLibrary.Materials.MaterialDrawMethod.Opaque )
+                    gpu.Alpha = AlphaUse.Blend;
+                else if ( ( flags & GFDLibrary.Materials.MaterialFlags.AlphaTest ) != 0 )
+                    gpu.Alpha = AlphaUse.Clip;
+                else
+                    gpu.Alpha = AlphaUse.Ignore;
+                gpu.AlphaReference = material.AlphaClip > 0 ? Math.Clamp( material.AlphaClip / 255f, 0f, 1f ) : 0.5f;
+            }
             return gpu;
         }
 
@@ -328,15 +383,18 @@ in vec3 vNormal;
 in vec2 vUv;
 uniform sampler2D uTexture;
 uniform int uHasTexture;
+uniform int uAlphaMode;   // 0 ignore alpha, 1 clip, 2 blend, 3 additive
+uniform float uAlphaRef;
 out vec4 fragColor;
 void main()
 {
     vec4 albedo = uHasTexture != 0 ? texture(uTexture, vUv) : vec4(0.86, 0.80, 0.72, 1.0);
-    if (albedo.a < 0.3) discard;
+    if (uAlphaMode == 1 && albedo.a < uAlphaRef) discard;
+    float alpha = (uAlphaMode >= 2) ? albedo.a : 1.0;
     vec3 n = normalize(vNormal);
     float light = abs(dot(n, normalize(vec3(0.35, 0.55, 0.75))));
-    vec3 color = albedo.rgb * (0.45 + 0.6 * light);
-    fragColor = vec4(color, 1.0);
+    vec3 color = uAlphaMode == 3 ? albedo.rgb : albedo.rgb * (0.45 + 0.6 * light);
+    fragColor = vec4(color, alpha);
 }";
             var vs = Compile( ShaderType.VertexShader, vertex );
             var fs = Compile( ShaderType.FragmentShader, fragment );

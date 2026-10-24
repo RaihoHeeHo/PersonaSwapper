@@ -144,13 +144,18 @@ namespace PersonaSwapper.Core.Swap
         };
 
         /// <summary>
-        /// Default slot mapping. Personas and Shadows share one slot layout (persona slot N copies enemy
-        /// slot N in the base game), so a persona/enemy source uses its own animations slot-for-slot.
-        /// Otherwise each slot keeps the destination persona's original motion, retargeted.
+        /// Default slot mapping, always from the source model's own animations:
+        /// - Personas and Shadows share one slot layout (persona slot N copies enemy slot N in the base game),
+        ///   so their own battle pack is used slot-for-slot.
+        /// - Otherwise (or for slots the source's pack lacks) the source's idle from its main pack.
+        /// - Only a source with no animations of its own falls back to the destination's motions, retargeted.
         /// </summary>
         public static IEnumerable<SlotAssignment> DefaultSlots( GameData game, ModelEntry source, PersonaEntry destination )
         {
-            var ownBattlePack = FindOwnBattlePack( source );
+            var ownPacks = OwnAnimationPacks( source );
+            var mainPack = ownPacks.FirstOrDefault( p => AnimationCache.Shared.Info( game.Archive, p ).Any( a => !a.IsEmpty ) );
+            var idleIndex = mainPack == null ? 0 : AnimationCache.Shared.Info( game.Archive, mainPack ).First( a => !a.IsEmpty ).Index;
+            var slotForSlot = source.Category is ModelCategory.Persona or ModelCategory.Enemy;
             var destinationModel = destination.BattleModelPath;
 
             foreach ( var kind in new[] { AnimationPackKind.Battle, AnimationPackKind.Secondary } )
@@ -162,27 +167,23 @@ namespace PersonaSwapper.Core.Swap
                     continue;
 
                 var slotCount = AnimationCache.Shared.SlotCount( game.Archive, destinationPack );
-                var ownPack = kind == AnimationPackKind.Battle ? ownBattlePack : FindOwnSecondaryPack( source );
-                var ownCount = ownPack != null ? AnimationCache.Shared.SlotCount( game.Archive, ownPack ) : 0;
+                var matchingPack = !slotForSlot ? null
+                    : kind == AnimationPackKind.Battle ? ownPacks.FirstOrDefault( IsBattlePack )
+                    : ownPacks.FirstOrDefault( p => System.IO.Path.GetFileName( p ).StartsWith( "GT", StringComparison.OrdinalIgnoreCase ) );
 
                 for ( var slot = 0; slot < slotCount; slot++ )
                 {
-                    var originalIsEmpty = AnimationCache.Shared.IsEmpty( game.Archive, destinationPack, slot );
-                    if ( originalIsEmpty )
+                    if ( AnimationCache.Shared.IsEmpty( game.Archive, destinationPack, slot ) )
                     {
                         yield return new SlotAssignment { Pack = kind, Slot = slot, Empty = true, SourcePackPath = destinationPack, SourceIndex = slot };
                     }
-                    else if ( ownPack != null && slot < ownCount && !AnimationCache.Shared.IsEmpty( game.Archive, ownPack, slot ) )
+                    else if ( matchingPack != null && !AnimationCache.Shared.IsEmpty( game.Archive, matchingPack, slot ) )
                     {
-                        yield return new SlotAssignment { Pack = kind, Slot = slot, SourcePackPath = ownPack, SourceIndex = slot, RigModelPath = source.Path };
+                        yield return new SlotAssignment { Pack = kind, Slot = slot, SourcePackPath = matchingPack, SourceIndex = slot, RigModelPath = source.Path };
                     }
-                    else if ( kind == AnimationPackKind.Secondary && ownBattlePack != null &&
-                              !AnimationCache.Shared.IsEmpty( game.Archive, ownBattlePack, 0 ) &&
-                              !SharesSkeleton( game, destinationModel, source.Path ) )
+                    else if ( mainPack != null )
                     {
-                        // The destination's secondary motions target its own bones; a different skeleton
-                        // would just stand still, so use the source's idle instead.
-                        yield return new SlotAssignment { Pack = kind, Slot = slot, SourcePackPath = ownBattlePack, SourceIndex = 0, RigModelPath = source.Path };
+                        yield return new SlotAssignment { Pack = kind, Slot = slot, SourcePackPath = mainPack, SourceIndex = idleIndex, RigModelPath = source.Path };
                     }
                     else
                     {
@@ -194,6 +195,35 @@ namespace PersonaSwapper.Core.Swap
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// The animation packs the source model plays in game (GAPs stored with it), most useful first:
+        /// battle packs before field/event packs, and for characters the model's own costume before others.
+        /// </summary>
+        public static IReadOnlyList<string> OwnAnimationPacks( ModelEntry source )
+        {
+            var file = System.IO.Path.GetFileNameWithoutExtension( source.Path );
+            var costume = source.Category == ModelCategory.Character && file.Length >= 9 ? file.Substring( 6, 3 ) : null; // C0001_051_00
+            int Rank( string path )
+            {
+                var name = System.IO.Path.GetFileName( path ).ToUpperInvariant();
+                var battle = IsBattlePack( path ) ? 0 : 1;
+                var sameCostume = costume == null || name.Contains( "_" + costume ) ? 0 : 1;
+                return battle * 2 + sameCostume;
+            }
+            return source.AnimationPaths
+                .OrderBy( Rank )
+                .ThenBy( p => p, StringComparer.OrdinalIgnoreCase )
+                .ToList();
+        }
+
+        /// <summary>Battle animation packs: persona BPS, Shadow BEM, character BB/BF/BE and shared BCMN.</summary>
+        public static bool IsBattlePack( string path )
+        {
+            var name = System.IO.Path.GetFileName( path ).ToUpperInvariant();
+            return name.StartsWith( "BPS" ) || name.StartsWith( "BEM" ) || name.StartsWith( "BB" ) || name.StartsWith( "BF" ) ||
+                   name.StartsWith( "BE" ) || name.StartsWith( "BCMN" );
         }
 
         /// <summary>True when at least half of model A's node names also exist in model B.</summary>
@@ -209,21 +239,5 @@ namespace PersonaSwapper.Core.Swap
             var total = a.Nodes.Count();
             return total > 0 && a.Nodes.Count( n => namesB.Contains( n.Name ) ) * 2 >= total;
         }
-
-        private static string? FindOwnBattlePack( ModelEntry source )
-        {
-            var prefix = source.Category switch
-            {
-                ModelCategory.Persona => $"BPS{source.Id:D4}_000",
-                ModelCategory.Enemy => $"BEM{source.Id:D4}_000",
-                _ => null,
-            };
-            return prefix == null ? null : source.AnimationPaths.FirstOrDefault( p => p.EndsWith( prefix + ".GAP", StringComparison.OrdinalIgnoreCase ) );
-        }
-
-        private static string? FindOwnSecondaryPack( ModelEntry source )
-            => source.Category == ModelCategory.Persona
-                ? source.AnimationPaths.FirstOrDefault( p => p.EndsWith( $"GT{source.Id:D4}.GAP", StringComparison.OrdinalIgnoreCase ) )
-                : null;
     }
 }
