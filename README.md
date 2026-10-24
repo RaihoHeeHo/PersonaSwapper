@@ -44,6 +44,13 @@ Findings this is based on (checked against the game files):
   persona's packs are still offered, labelled "(retarget)".
 - The "Bones" column shows how many of an animation's bones exist on the source model; low numbers mean that motion
   won't play properly on it.
+- The game matches animation controllers to bones by name: shipped packs have indices that don't line up with
+  their models and controllers for bones no model has (`RootNode`, `lookat`). So the tool leaves animations as shipped
+  and only re-points indices for animations taken from another model. With the source's own animations (and in an
+  "identity" swap of a persona onto itself) the exported packs are byte-for-byte the game's.
+- Bone names are UTF-8 (e.g. `Bip01 L ﾎﾟﾆｰﾃｰﾙ 1`), each stored with a hash. GFDLibrary used to read them as Shift-JIS,
+  which garbled such names and their hashes on save; names now pass through byte-exact with their original hashes.
+  `pswap <game> gaproundtrip` re-saves all 400 persona packs identically.
 - Preview materials follow the game's settings: P5R stores other data in the diffuse alpha of most opaque materials
   (310 of 351 sampled), so alpha is only used for alpha-tested, transparent or additive materials.
 

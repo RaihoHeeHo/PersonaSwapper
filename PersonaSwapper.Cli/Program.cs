@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -62,6 +63,43 @@ namespace PersonaSwapper.Cli
                 case "previewcheck":
                     // previewcheck <start> <count> [filter]
                     return PreviewCheck( game, int.Parse( args[2] ), int.Parse( args[3] ), args.Length > 4 ? args[4] : null );
+
+                case "zcompare":
+                    ZCompare( game, args.Skip( 2 ).Select( int.Parse ).ToArray() );
+                    return 0;
+
+                case "helpers":
+                    Helpers( game );
+                    return 0;
+
+                case "packextras":
+                    PackExtras( game );
+                    return 0;
+
+                case "validatebase":
+                    ValidateBase( game );
+                    return 0;
+
+                case "swapmatrix":
+                    SwapMatrix( game, args.Skip( 2 ).ToArray() );
+                    return 0;
+
+                case "ids":
+                    Ids( game, args[2], args[3] );
+                    return 0;
+
+                case "gaproundtrip":
+                    GapRoundTrip( game, args.Length > 2 ? args[2] : "PERSONA" );
+                    return 0;
+
+                case "resave":
+                    System.IO.File.WriteAllBytes( args[3], SwapBuilder.Save( AnimationCache.Shared.FreshPack( game.Archive, args[2] ) ) );
+                    System.IO.File.WriteAllBytes( args[3] + ".orig", game.Archive.Read( args[2] ) );
+                    return 0;
+
+                case "identity":
+                    Identity( game, args.Skip( 2 ).Select( int.Parse ).ToArray() );
+                    return 0;
 
                 case "materials":
                     Materials( game, args.Skip( 2 ).ToArray() );
@@ -231,6 +269,274 @@ namespace PersonaSwapper.Cli
             }
             Console.WriteLine( $"Checked {models.Count} models in {sw.Elapsed.TotalSeconds:0}s: {failures} failed, {withIssues} with data issues" );
             return 0;
+        }
+
+        private static HashSet<int> HelperIds( GFDLibrary.Models.Model model )
+        {
+            var ids = new HashSet<int>();
+            foreach ( var node in model.Nodes )
+                if ( node.Properties != null && node.Properties.TryGetValue( "gfdHelperID", out var prop ) )
+                    ids.Add( Convert.ToInt32( prop.GetValue() ) );
+            return ids;
+        }
+
+        /// <summary>How the battle (PS), compendium (PSZ) and high-detail (PSZX) models of personas differ.</summary>
+        private static void ZCompare( GameData game, int[] ids )
+        {
+            PersonaSwapper.Core.Diagnostics.Log.EchoToConsole = false;
+            var personas = ids.Length > 0 ? game.Catalog.Personas.Where( p => ids.Contains( p.Id ) ) : game.Catalog.Personas.Take( 12 );
+            foreach ( var persona in personas )
+            {
+                Console.WriteLine( $"#{persona.Id}" );
+                HashSet<string>? psNodes = null;
+                foreach ( var variant in new[] { "PS", "PSZ", "PSZX" } )
+                {
+                    var path = $"{persona.Folder}/{variant}{persona.Id:D4}.GMD";
+                    if ( !game.Archive.Contains( path ) ) { Console.WriteLine( $"  {variant}: missing" ); continue; }
+                    var bytes = game.Archive.Read( path );
+                    var pack = (ModelPack)Resource.Load( new System.IO.MemoryStream( bytes ), false );
+                    var nodes = pack.Model?.Nodes.Select( n => n.Name ).ToHashSet() ?? new HashSet<string>();
+                    psNodes ??= nodes;
+                    var anims = pack.AnimationPack?.Animations?.Count ?? 0;
+                    var animNames = pack.AnimationPack?.Animations?.SelectMany( a => a.Controllers ?? new() ).Select( c => c.TargetName ).Distinct().ToList() ?? new();
+                    Console.WriteLine( $"  {variant}: {bytes.Length} bytes v{pack.Version:X8}, {nodes.Count} nodes ({nodes.Except( psNodes ).Count()} not in PS, {psNodes.Except( nodes ).Count()} PS nodes missing), " +
+                                       $"{pack.Textures?.Count ?? 0} textures, {pack.Materials?.Count ?? 0} materials, embedded anims {anims} ({animNames.Count( n => !nodes.Contains( n ) )} of {animNames.Count} targets missing), " +
+                                       $"F8={pack.ChunkType000100F8 != null} F9={pack.ChunkType000100F9 != null}, helpers [{string.Join( ",", pack.Model != null ? HelperIds( pack.Model ).OrderBy( x => x ) : Enumerable.Empty<int>() )}]" );
+                    if ( variant != "PS" )
+                        Console.WriteLine( $"     extra nodes: {string.Join( ", ", nodes.Except( psNodes ).Take( 8 ) )}" );
+                }
+                var gt = $"{persona.Folder}/GT{persona.Id:D4}.GAP";
+                if ( game.Archive.Contains( gt ) )
+                {
+                    var gtPack = ((ModelPack)Resource.Load( new System.IO.MemoryStream( game.Archive.Read( gt ) ), false )).AnimationPack;
+                    var targets = gtPack.Animations.SelectMany( a => a.Controllers ?? new() ).Where( c => c.TargetKind == TargetKind.Node ).Select( c => c.TargetName ).Distinct().ToList();
+                    Console.WriteLine( $"  GT: {gtPack.Animations.Count} anims, {targets.Count} bones, {targets.Count( t => !psNodes!.Contains( t ) )} not in PS" );
+                }
+                AnimationCache.Shared.Clear();
+            }
+        }
+
+        /// <summary>Which gfdHelperID helper nodes each kind of model carries.</summary>
+        private static void Helpers( GameData game )
+        {
+            PersonaSwapper.Core.Diagnostics.Log.EchoToConsole = false;
+            var groups = new (string Name, IEnumerable<ModelEntry> Models)[]
+            {
+                ("persona PS", game.Catalog.Personas.Select( p => game.Catalog.Models.First( m => m.Path == p.BattleModelPath ) )),
+                ("enemy EM", game.Catalog.Models.Where( m => m.Category == ModelCategory.Enemy && m.FileName.StartsWith( "EM" ) )),
+                ("character _051/_000", game.Catalog.Models.Where( m => m.Category == ModelCategory.Character && ( m.FileName.Contains( "_051_" ) || m.FileName.Contains( "_000_" ) ) ).Take( 150 )),
+            };
+            foreach ( var (name, models) in groups )
+            {
+                var freq = new Dictionary<int, int>();
+                var n = 0; var none = 0;
+                foreach ( var m in models )
+                {
+                    try
+                    {
+                        var model = AnimationCache.Shared.Model( game.Archive, m.Path ).Model;
+                        if ( model == null ) continue;
+                        n++;
+                        var ids = HelperIds( model );
+                        if ( ids.Count == 0 ) none++;
+                        foreach ( var id in ids ) freq[id] = freq.TryGetValue( id, out var c ) ? c + 1 : 1;
+                    }
+                    catch { }
+                    AnimationCache.Shared.Clear();
+                }
+                Console.WriteLine( $"{name}: {n} models, {none} without any helpers" );
+                Console.WriteLine( "  " + string.Join( ", ", freq.OrderBy( x => x.Key ).Select( x => $"{x.Key}:{x.Value}" ) ) );
+            }
+        }
+
+        /// <summary>Blend animations, pack-level and per-animation extra data in persona packs.</summary>
+        private static void PackExtras( GameData game )
+        {
+            PersonaSwapper.Core.Diagnostics.Log.EchoToConsole = false;
+            int packs = 0, withBlend = 0, withBit29 = 0, a28 = 0, a29 = 0, a31 = 0;
+            var effectBones = new Dictionary<string, int>();
+            foreach ( var persona in game.Catalog.Personas )
+            {
+                foreach ( var path in new[] { persona.BattleAnimationPath, $"{persona.Folder}/GT{persona.Id:D4}.GAP" } )
+                {
+                    if ( path == null || !game.Archive.Contains( path ) ) continue;
+                    var pack = AnimationCache.Shared.FreshPack( game.Archive, path );
+                    packs++;
+                    if ( pack.BlendAnimations?.Count > 0 ) withBlend++;
+                    if ( pack.Bit29Data != null ) withBit29++;
+                    foreach ( var a in pack.Animations ?? new List<Animation>() )
+                    {
+                        if ( a.Field10 != null ) { a28++; foreach ( var e in a.Field10 ) effectBones[e.Field04 ?? ""] = effectBones.TryGetValue( e.Field04 ?? "", out var c ) ? c + 1 : 1; }
+                        if ( a.Field14 != null ) a29++;
+                        if ( a.Field1C != null ) a31++;
+                    }
+                }
+            }
+            Console.WriteLine( $"{packs} persona packs: {withBlend} with blend animations, {withBit29} with pack Bit29 data; animations with bit28 (EPL) {a28}, bit29 {a29}, bit31 {a31}" );
+            var bit31Names = new Dictionary<string, int>();
+            var bit31Kinds = new Dictionary<int, int>();
+            foreach ( var persona in game.Catalog.Personas.Take( 120 ) )
+            {
+                if ( persona.BattleAnimationPath == null ) continue;
+                var model = AnimationCache.Shared.Model( game.Archive, persona.BattleModelPath ).Model!;
+                var names = new HashSet<string>( model.Nodes.Select( n => n.Name ) );
+                foreach ( var a in AnimationCache.Shared.FreshPack( game.Archive, persona.BattleAnimationPath ).Animations )
+                    if ( a.Field1C != null )
+                    {
+                        var key = ( names.Contains( a.Field1C.Field04 ?? "" ) ? "[node] " : "[not a node] " ) + a.Field1C.Field04;
+                        bit31Names[key] = bit31Names.TryGetValue( key, out var c ) ? c + 1 : 1;
+                        bit31Kinds[a.Field1C.Field00] = bit31Kinds.TryGetValue( a.Field1C.Field00, out var k ) ? k + 1 : 1;
+                    }
+                AnimationCache.Shared.Clear();
+            }
+            Console.WriteLine( "bit31 names: " + string.Join( ", ", bit31Names.OrderByDescending( x => x.Value ).Take( 12 ).Select( x => $"{x.Key}:{x.Value}" ) ) );
+            Console.WriteLine( "bit31 Field00: " + string.Join( ", ", bit31Kinds.Select( x => $"{x.Key}:{x.Value}" ) ) );
+            Console.WriteLine( "EPL attach points: " + string.Join( ", ", effectBones.OrderByDescending( x => x.Value ).Take( 15 ).Select( x => $"{x.Key}:{x.Value}" ) ) );
+        }
+
+        /// <summary>The game's own persona packs checked against their own models (should be clean).</summary>
+        private static void ValidateBase( GameData game )
+        {
+            PersonaSwapper.Core.Diagnostics.Log.EchoToConsole = false;
+            int packs = 0, bad = 0;
+            foreach ( var persona in game.Catalog.Personas )
+            {
+                var model = AnimationCache.Shared.Model( game.Archive, persona.BattleModelPath ).Model!;
+                foreach ( var path in new[] { persona.BattleAnimationPath, $"{persona.Folder}/GT{persona.Id:D4}.GAP" } )
+                {
+                    if ( path == null || !game.Archive.Contains( path ) ) continue;
+                    packs++;
+                    var problems = SwapBuilder.FindInvalidReferences( AnimationCache.Shared.FreshPack( game.Archive, path ), model, System.IO.Path.GetFileName( path ) );
+                    if ( problems.Count > 0 )
+                    {
+                        bad++;
+                        if ( bad <= 8 ) Console.WriteLine( $"{path}: {problems.Count} problems, e.g. {problems[0]}" );
+                    }
+                }
+                AnimationCache.Shared.Clear();
+            }
+            Console.WriteLine( $"{packs} base-game persona packs, {bad} with references that don't match their own model" );
+        }
+
+        /// <summary>Builds swaps for every source x destination pair given (paths and persona IDs) and reports validation.</summary>
+        private static void SwapMatrix( GameData game, string[] items )
+        {
+            PersonaSwapper.Core.Diagnostics.Log.EchoToConsole = false;
+            var sources = items.Where( i => i.Contains( '/' ) ).ToList();
+            var dests = items.Where( i => !i.Contains( '/' ) ).Select( int.Parse ).ToList();
+            foreach ( var sourcePath in sources )
+                foreach ( var destId in dests )
+                {
+                    var source = game.Catalog.Models.First( m => m.Path.Equals( sourcePath, StringComparison.OrdinalIgnoreCase ) );
+                    var dest = game.Catalog.Personas.First( p => p.Id == destId );
+                    var project = new SwapProject( game, source, dest );
+                    var build = SwapBuilder.Build( project );
+                    var model = AnimationCache.Shared.Model( game.Archive, source.Path ).Model!;
+                    var problems = 0;
+                    foreach ( var f in build.Files.Where( f => f.Key.EndsWith( ".GAP" ) ) )
+                    {
+                        using var stream = new System.IO.MemoryStream( f.Value );
+                        var pack = Resource.Load<AnimationPack>( stream );
+                        var found = SwapBuilder.FindInvalidReferences( pack, model, System.IO.Path.GetFileName( f.Key ) );
+                        problems += found.Count;
+                        foreach ( var line in found.Take( 4 ) ) Console.WriteLine( "    " + line );
+                    }
+                    var orig = AnimationCache.Shared.FreshPack( game.Archive, dest.BattleAnimationPath! );
+                    Console.WriteLine( $"{source.FileName,-20} -> {dest.Id,3} {dest.Name,-16} blend {orig.BlendAnimations?.Count ?? 0,2}, bit29 {( orig.Bit29Data != null ? "y" : "n" )}: " +
+                                       $"{problems} invalid refs after re-reading; {build.Warnings.Count} warnings" +
+                                       ( build.Warnings.Count > 0 ? $" ({string.Join( " | ", build.Warnings.Select( w => w.Length > 90 ? w[..90] + "…" : w ) )})" : "" ) );
+                }
+        }
+
+        /// <summary>Controller target IDs/names in a pack vs. the model's node order.</summary>
+        private static void Ids( GameData game, string modelPath, string packPath )
+        {
+            PersonaSwapper.Core.Diagnostics.Log.EchoToConsole = false;
+            var model = AnimationCache.Shared.Model( game.Archive, modelPath ).Model!;
+            var nodes = model.Nodes.ToList();
+            Console.WriteLine( $"{nodes.Count} nodes. First 12: " + string.Join( ", ", nodes.Take( 12 ).Select( ( n, i ) => $"{i}:{n.Name}" ) ) );
+            var anim = AnimationCache.Shared.FreshPack( game.Archive, packPath ).Animations.First( a => a.Controllers?.Count > 0 );
+            var byName = nodes.Select( ( n, i ) => (n.Name, i) ).GroupBy( x => x.Name ).ToDictionary( g => g.Key, g => g.First().i );
+            int same = 0, plusOne = 0, missing = 0, other = 0;
+            foreach ( var c in anim.Controllers.Where( c => c.TargetKind == TargetKind.Node ) )
+            {
+                if ( !byName.TryGetValue( c.TargetName, out var index ) ) { missing++; continue; }
+                if ( index == c.TargetId ) same++; else if ( index + 1 == c.TargetId ) plusOne++; else other++;
+            }
+            Console.WriteLine( $"{anim.Controllers.Count} controllers: id==dfsIndex {same}, id==dfsIndex+1 {plusOne}, name not in model {missing}, other {other}" );
+            Console.WriteLine( "First 15 controllers: " + string.Join( ", ", anim.Controllers.Take( 15 ).Select( c => $"{c.TargetId}:{c.TargetName}" ) ) );
+            var missingNames = anim.Controllers.Where( c => !byName.ContainsKey( c.TargetName ) ).Select( c => $"{c.TargetId}:{c.TargetName}" ).Take( 10 );
+            Console.WriteLine( "Not in model: " + string.Join( ", ", missingNames ) );
+            var maxId = anim.Controllers.Max( c => c.TargetId );
+            Console.WriteLine( $"Max target id {maxId} (model has {nodes.Count} nodes)" );
+        }
+
+        /// <summary>Re-saves game GAPs unchanged through GFDLibrary and compares bytes.</summary>
+        private static void GapRoundTrip( GameData game, string filter )
+        {
+            PersonaSwapper.Core.Diagnostics.Log.EchoToConsole = false;
+            var paths = game.Archive.Paths.Where( p => p.EndsWith( ".GAP", StringComparison.OrdinalIgnoreCase ) && p.Contains( filter, StringComparison.OrdinalIgnoreCase ) ).Take( 400 ).ToList();
+            int same = 0, differ = 0, failed = 0;
+            foreach ( var path in paths )
+            {
+                var original = game.Archive.Read( path );
+                try
+                {
+                    var pack = AnimationCache.Shared.FreshPack( game.Archive, path );
+                    var saved = SwapBuilder.Save( pack );
+                    if ( saved.AsSpan().SequenceEqual( original ) ) { same++; continue; }
+                    differ++;
+                    if ( differ <= 6 )
+                    {
+                        var firstDiff = 0;
+                        while ( firstDiff < Math.Min( saved.Length, original.Length ) && saved[firstDiff] == original[firstDiff] ) firstDiff++;
+                        Console.WriteLine( $"DIFF {path}: {original.Length} -> {saved.Length} bytes, first difference at 0x{firstDiff:X}" );
+                        Console.WriteLine( $"   orig: {Convert.ToHexString( original, Math.Max( 0, firstDiff - 8 ), Math.Min( 32, original.Length - Math.Max( 0, firstDiff - 8 ) ) )}" );
+                        Console.WriteLine( $"   save: {Convert.ToHexString( saved, Math.Max( 0, firstDiff - 8 ), Math.Min( 32, saved.Length - Math.Max( 0, firstDiff - 8 ) ) )}" );
+                    }
+                }
+                catch ( Exception e )
+                {
+                    failed++;
+                    if ( failed <= 3 ) Console.WriteLine( $"FAIL {path}: {e.Message}" );
+                }
+                AnimationCache.Shared.Clear();
+            }
+            Console.WriteLine( $"{paths.Count} GAPs matching '{filter}': {same} identical, {differ} different, {failed} failed" );
+        }
+
+        /// <summary>A persona swapped onto itself must export files identical to the game's.</summary>
+        private static void Identity( GameData game, int[] ids )
+        {
+            PersonaSwapper.Core.Diagnostics.Log.EchoToConsole = false;
+            int identical = 0, total = 0;
+            foreach ( var id in ids.Length > 0 ? ids : game.Catalog.Personas.Select( p => p.Id ).Take( 60 ).ToArray() )
+            {
+                var dest = game.Catalog.Personas.FirstOrDefault( p => p.Id == id );
+                if ( dest == null ) continue;
+                var source = game.Catalog.Models.First( m => m.Path.Equals( dest.BattleModelPath, StringComparison.OrdinalIgnoreCase ) );
+                var build = SwapBuilder.Build( new SwapProject( game, source, dest ) );
+                foreach ( var (path, data) in build.Files )
+                {
+                    total++;
+                    var same = game.Archive.Read( path ).AsSpan().SequenceEqual( data );
+                    if ( same ) identical++;
+                    else
+                    {
+                        Console.WriteLine( $"  persona {id}: {path} differs ({game.Archive.GetSize( path )} -> {data.Length} bytes)" );
+                        var dump = Environment.GetEnvironmentVariable( "PSWAP_DUMP" );
+                        if ( dump != null )
+                        {
+                            Directory.CreateDirectory( dump );
+                            var name = Path.GetFileName( path );
+                            File.WriteAllBytes( Path.Combine( dump, name + ".orig" ), game.Archive.Read( path ) );
+                            File.WriteAllBytes( Path.Combine( dump, name + ".new" ), data );
+                        }
+                    }
+                }
+                AnimationCache.Shared.Clear();
+            }
+            Console.WriteLine( $"Identity swaps: {identical} of {total} exported files identical to the game's" );
         }
 
         /// <summary>Material alpha settings vs. how much of each diffuse texture is low-alpha.</summary>
