@@ -36,6 +36,7 @@ jobs:
           repository: RaihoHeeHo/GFD-Studio
           ref: macos-port
           path: GFD-Studio-macOS
+          submodules: recursive # Ports/ compiles the Scarlet and tga-decoder-cs submodule sources
 
       - name: Install .NET 8
         uses: actions/setup-dotnet@v4
@@ -70,7 +71,16 @@ jobs:
         working-directory: PersonaSwapper
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: ./"Build Release.command"
+        run: |
+          set +e
+          ./"Build Release.command" 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            # Surface the errors as annotations (readable on the run page without opening the log).
+            grep -E ' error |error:|Error:|failed|No such file' build.log | grep -v NU1701 | sort -u | head -30 |
+              while IFS= read -r line; do echo "::error::${line}"; done
+          fi
+          exit "$status"
 
       - name: Keep the builds as an artifact
         uses: actions/upload-artifact@v4
