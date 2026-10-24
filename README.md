@@ -21,6 +21,20 @@ cd ~/Downloads/p5r-build/src/PersonaSwapper
 dotnet run -c Release --project PersonaSwapper.App
 ```
 
+### Standalone apps
+
+Double-click **Build Release.command** to build apps that run without .NET installed (internet needed the first time):
+
+| Output in `release/` | For |
+|---|---|
+| `macOS-Apple-Silicon/Persona Swapper.app` | M1–M4 Macs |
+| `macOS-Intel/Persona Swapper.app` | Intel Macs |
+| `Windows/PersonaSwapper.exe` | 64-bit Windows (single file) |
+
+plus a `.zip` of each for sharing. The Mac apps are signed ad hoc and not notarized: they open normally on the Mac
+that built them, but on another Mac the first launch needs right-click → Open (or System Settings → Privacy & Security
+→ Open Anyway). Windows SmartScreen may show "Windows protected your PC" for the unsigned exe; choose More info → Run anyway.
+
 The game folder defaults to `~/Library/Application Support/Steam/steamapps/common/P5R`, and exports go to
 `Reloaded-II/Mods` inside it. Both can be changed at the top of the window.
 

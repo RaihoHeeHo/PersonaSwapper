@@ -6,6 +6,7 @@
         xmlns:game="using:PersonaSwapper.Core.Game"
         xmlns:swap="using:PersonaSwapper.Core.Swap"
         xmlns:views="using:PersonaSwapper.App.Views"
+        Icon="/Assets/icon.png"
         mc:Ignorable="d" d:DesignWidth="1500" d:DesignHeight="900"
         x:Class="PersonaSwapper.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
