@@ -1,15 +1,25 @@
-# Builds the macOS apps (Apple Silicon and Intel) and the Windows exe.
-# Push a tag like v1.0.0 to publish them as a GitHub release; or run it by hand from the
-# Actions tab to get the builds as a downloadable artifact.
-name: Release
+# Builds the macOS apps (Apple Silicon and Intel) and the Windows exe on every push to main.
+# Publishing a release:
+#   - bump <Version> in PersonaSwapper.App/PersonaSwapper.App.csproj and push to main: release v<Version>
+#     is created automatically (once per version), or
+#   - create a release on GitHub (or push a v* tag): the builds are attached to it.
+# Every run also keeps the builds as a downloadable artifact on the run's page.
+name: Build and release
 
 on:
   push:
+    branches: [main]
     tags: ["v*"]
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -32,21 +42,48 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
+      - name: Work out the version and release tag
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            tag="${{ github.event.release.tag_name }}"
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            tag="$GITHUB_REF_NAME"
+          else
+            v=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' PersonaSwapper/PersonaSwapper.App/PersonaSwapper.App.csproj)
+            tag="v$v"
+          fi
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          # A push to main publishes only if this version hasn't been released yet.
+          publish=true
+          if [[ "${{ github.event_name }}" == "push" && "$GITHUB_REF" == refs/heads/* ]]; then
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then publish=false; fi
+          fi
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then publish=false; fi
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "Version ${tag#v}, tag $tag, publish $publish"
+
       - name: Build
         working-directory: PersonaSwapper
-        run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then export VERSION="${GITHUB_REF_NAME#v}"; fi
-          ./"Build Release.command"
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: ./"Build Release.command"
 
-      - name: Upload builds
+      - name: Keep the builds as an artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PersonaSwapper-builds
+          name: PersonaSwapper-${{ steps.version.outputs.version }}
           path: PersonaSwapper/release/*.zip
 
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.version.outputs.publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Persona Swapper ${{ steps.version.outputs.version }}
           files: PersonaSwapper/release/*.zip
           generate_release_notes: true
