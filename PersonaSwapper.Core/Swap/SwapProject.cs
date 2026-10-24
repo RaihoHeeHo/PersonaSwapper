@@ -66,7 +66,46 @@ namespace PersonaSwapper.Core.Swap
                 Lore = new PersonaLore( MessageScript.Parse( game.Archive.Read( PersonaLore.BmdPath ) ) );
 
             Slots = DefaultSlots( game, sourceModel, destination ).ToList();
+            MenuModelPath = FindMenuModel( game, Units, destination.Id, out var shadowId );
+            if ( MenuModelPath != null )
+            {
+                ShadowAnimationPath = $"MODEL/CHARACTER/ENEMY/{shadowId:D4}/BEM{shadowId:D4}_000.GAP";
+                if ( !game.Archive.Contains( ShadowAnimationPath ) ) ShadowAnimationPath = null;
+            }
         }
+
+        /// <summary>
+        /// The persona menu and the compendium show the persona's Shadow model, not PS/PSZX (verified in game: with
+        /// ENEMY/0006/EM0006.GMD replaced, Pixie's menu model changed). The Shadow is the enemy whose UNIT.TBL visual
+        /// entry gives this persona (normally the enemy with the same ID). Personas without a Shadow model use PS.
+        /// </summary>
+        public static string? FindMenuModel( GameData game, UnitTable units, int personaId, out int modelId )
+        {
+            modelId = -1;
+            var visuals = units.EnemyVisuals;
+            if ( personaId < visuals.Count && visuals[personaId].PersonaId == personaId )
+                modelId = visuals[personaId].ModelId;
+            else
+            {
+                var match = visuals.FirstOrDefault( v => v.PersonaId == personaId );
+                if ( match != null ) modelId = match.ModelId;
+            }
+            if ( modelId <= 0 ) return null;
+            var path = $"MODEL/CHARACTER/ENEMY/{modelId:D4}/EM{modelId:D4}.GMD";
+            return game.Archive.Contains( path ) ? path : null;
+        }
+
+        /// <summary>The Shadow model the game shows for this persona in menus and the compendium, if it has one.</summary>
+        public string? MenuModelPath { get; }
+
+        /// <summary>The Shadow's battle animations (BEM), used with <see cref="MenuModelPath"/> in battle.</summary>
+        public string? ShadowAnimationPath { get; }
+
+        /// <summary>
+        /// Also replace <see cref="MenuModelPath"/> so menus and the compendium show the new model. That file is the
+        /// Shadow's battle model too, so the Shadow changes in battle as well.
+        /// </summary>
+        public bool ReplaceMenuModel { get; set; } = true;
 
         public GameData Game { get; }
 

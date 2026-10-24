@@ -53,6 +53,23 @@ namespace PersonaSwapper.Core.Swap
                 }
             }
 
+            // The persona menu and compendium show the Shadow model (EM), which is also the Shadow's battle model.
+            if ( project.ReplaceMenuModel && project.MenuModelPath != null &&
+                 !string.Equals( project.MenuModelPath, project.SourceModel.Path, StringComparison.OrdinalIgnoreCase ) )
+            {
+                result.Files[project.MenuModelPath] = sourceBytes;
+                var ownShadowPack = project.SourceModel.Category == Game.ModelCategory.Enemy
+                    ? SwapProject.OwnAnimationPacks( project.SourceModel ).FirstOrDefault( p => System.IO.Path.GetFileName( p ).StartsWith( "BEM", StringComparison.OrdinalIgnoreCase ) && p.EndsWith( "_000.GAP", StringComparison.OrdinalIgnoreCase ) )
+                    : null;
+                if ( project.ShadowAnimationPath != null && ownShadowPack != null )
+                {
+                    // An enemy source brings its own Shadow animations, so the Shadow version is fully that enemy.
+                    result.Files[project.ShadowAnimationPath] = cache.Bytes( game.Archive, ownShadowPack );
+                }
+                else if ( project.ShadowAnimationPath != null )
+                    result.Warnings.Add( $"{project.MenuModelPath} (shown in menus) is also {dest.Name}'s Shadow in battle; the Shadow will play its own animations on the new model." );
+            }
+
             var duplicates = sourceModel.Model.Nodes.GroupBy( n => n.Name ).Where( g => g.Count() > 1 ).Select( g => g.Key ).ToList();
             if ( duplicates.Count > 0 )
                 result.Warnings.Add( $"Source model has duplicate bone names ({string.Join( ", ", duplicates.Take( 5 ) )}); those bones may animate oddly." );

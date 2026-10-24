@@ -64,6 +64,106 @@ namespace PersonaSwapper.Cli
                     // previewcheck <start> <count> [filter]
                     return PreviewCheck( game, int.Parse( args[2] ), int.Parse( args[3] ), args.Length > 4 ? args[4] : null );
 
+                case "find":
+                {
+                    var rx = new System.Text.RegularExpressions.Regex( args[2], System.Text.RegularExpressions.RegexOptions.IgnoreCase );
+                    foreach ( var path in game.Archive.Paths.Where( p => rx.IsMatch( p ) ).OrderBy( p => p ) )
+                        Console.WriteLine( $"{game.Archive.GetSize( path ),10} {path}" );
+                    return 0;
+                }
+
+                case "grep":
+                {
+                    // Searches file contents (raw bytes, ASCII pattern) of every file below a size limit.
+                    var needle = System.Text.Encoding.ASCII.GetBytes( args[2] );
+                    var limit = args.Length > 3 ? long.Parse( args[3] ) : 4_000_000;
+                    var skip = new[] { ".DDS", ".GMD", ".GAP", ".ADX", ".USM", ".AWB", ".ACB", ".GFS", ".EPL" };
+                    foreach ( var path in game.Archive.Paths.OrderBy( p => p ) )
+                    {
+                        if ( skip.Any( e => path.EndsWith( e, StringComparison.OrdinalIgnoreCase ) ) ) continue;
+                        if ( game.Archive.GetSize( path ) > limit ) continue;
+                        var data = game.Archive.Read( path );
+                        var at = data.AsSpan().IndexOf( needle );
+                        if ( at >= 0 )
+                        {
+                            var start = Math.Max( 0, at - 24 );
+                            var text = new string( data.Skip( start ).Take( 80 ).Select( b => b >= 32 && b < 127 ? (char)b : '.' ).ToArray() );
+                            Console.WriteLine( $"{path} @{at}: {text}" );
+                        }
+                    }
+                    return 0;
+                }
+
+                case "lookalike":
+                {
+                    // Models sharing texture names with the given model (other copies of the same character).
+                    PersonaSwapper.Core.Diagnostics.Log.EchoToConsole = false;
+                    var target = AnimationCache.Shared.Model( game.Archive, args[2] );
+                    var names = target.Textures?.Keys.ToHashSet() ?? new HashSet<string>();
+                    Console.WriteLine( $"{args[2]}: textures {string.Join( ", ", names )}" );
+                    foreach ( var m in game.Catalog.Models )
+                    {
+                        try
+                        {
+                            var pack = AnimationCache.Shared.Model( game.Archive, m.Path );
+                            var shared = pack.Textures?.Keys.Count( names.Contains ) ?? 0;
+                            if ( shared > 0 && m.Path != args[2] )
+                                Console.WriteLine( $"  {m.Path} ({game.Archive.GetSize( m.Path ):N0} bytes) shares {shared}: {string.Join( ", ", pack.Textures!.Keys.Where( names.Contains ) )}" );
+                        }
+                        catch { }
+                        AnimationCache.Shared.Clear();
+                    }
+                    return 0;
+                }
+
+                case "menusurvey":
+                {
+                    int gt = 0, gtNoEm = 0, gtNoPszx = 0, gtNeither = 0;
+                    var samples = new List<string>();
+                    foreach ( var p in game.Catalog.Personas )
+                    {
+                        if ( !game.Archive.Contains( $"{p.Folder}/GT{p.Id:D4}.GAP" ) ) continue;
+                        gt++;
+                        var em = game.Archive.Contains( $"MODEL/CHARACTER/ENEMY/{p.Id:D4}/EM{p.Id:D4}.GMD" );
+                        var pszx = game.Archive.Contains( $"{p.Folder}/PSZX{p.Id:D4}.GMD" );
+                        if ( !em ) gtNoEm++;
+                        if ( !pszx ) gtNoPszx++;
+                        if ( !em && !pszx ) { gtNeither++; if ( samples.Count < 10 ) samples.Add( $"{p.Id} {p.Name}" ); }
+                    }
+                    Console.WriteLine( $"{gt} personas with GT; {gtNoEm} without ENEMY/<same id>/EM; {gtNoPszx} without PSZX; {gtNeither} with neither: {string.Join( ", ", samples )}" );
+                    var pairs = game.Units.EnemyVisuals.Select( ( e, i ) => (i, e.PersonaId) ).Where( x => x.PersonaId != 0 && x.i != x.PersonaId ).Take( 10 );
+                    Console.WriteLine( "enemy->persona with different ids: " + string.Join( ", ", pairs ) );
+                    return 0;
+                }
+
+                case "testmod":
+                {
+                    // testmod <modsFolder> <modId> <gamePath>=<sourceGamePath> ... : plain file-replacement mod for experiments.
+                    var result = new SwapBuildResult();
+                    foreach ( var pair in args.Skip( 4 ) )
+                    {
+                        var parts = pair.Split( '=' );
+                        result.Files[parts[0]] = game.Archive.Read( parts[1] );
+                    }
+                    Console.WriteLine( ModWriter.Write( args[2], new ModInfo( args[3], args[3], "Persona Swapper", "Diagnostic file replacement" ), result ) );
+                    return 0;
+                }
+
+                case "visualdump":
+                {
+                    var visual = VisualTable.Parse( game.Archive.Read( GameData.VisualTablePath ) );
+                    Console.WriteLine( "VISUAL segments: " + string.Join( ", ", visual.Table.Segments.Select( x => x.Length ) ) );
+                    var seg = visual.Table.Segments[VisualTable.PersonaSegment];
+                    foreach ( var id in args.Skip( 2 ).Select( int.Parse ) )
+                    {
+                        var words = Enumerable.Range( 0, VisualTable.PersonaSize / 2 ).Select( i => ( seg[id * VisualTable.PersonaSize + i * 2] << 8 ) | seg[id * VisualTable.PersonaSize + i * 2 + 1] );
+                        Console.WriteLine( $"persona {id}: {string.Join( " ", words.Select( w => w.ToString( "X4" ) ) )}" );
+                        var enemies = game.Units.EnemyVisuals.Select( ( e, i ) => (i, e) ).Where( x => x.e.PersonaId == id ).Select( x => $"enemy {x.i} model {x.e.ModelId}" );
+                        Console.WriteLine( "   recruited from: " + string.Join( ", ", enemies ) );
+                    }
+                    return 0;
+                }
+
                 case "zcompare":
                     ZCompare( game, args.Skip( 2 ).Select( int.Parse ).ToArray() );
                     return 0;

@@ -233,6 +233,12 @@
                     </StackPanel>
 
                     <StackPanel Spacing="6">
+                      <TextBlock Classes="step" Text="Menu and compendium model" />
+                      <CheckBox Content="{Binding MenuModelLabel}" IsChecked="{Binding ReplaceMenuModel}" IsVisible="{Binding HasMenuModel}" />
+                      <TextBlock Classes="hint" TextWrapping="Wrap" Text="{Binding MenuModelHint}" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="6">
                       <TextBlock Classes="step" Text="Compendium lore" />
                       <TextBlock Classes="hint" IsVisible="{Binding !HasLore}" Text="This persona has no compendium entry in FACILITY/DATMYTH.BMD." />
                       <Grid ColumnDefinitions="*,12,Auto" IsVisible="{Binding HasLore}">

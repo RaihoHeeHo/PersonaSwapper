@@ -135,6 +135,23 @@ namespace PersonaSwapper.App.ViewModels
 
         public string ScaleHint { get; }
 
+        public bool HasMenuModel => Project.MenuModelPath != null;
+
+        public bool ReplaceMenuModel
+        {
+            get => Project.ReplaceMenuModel;
+            set { Project.ReplaceMenuModel = value; OnPropertyChanged(); }
+        }
+
+        public string MenuModelLabel => Project.MenuModelPath == null ? "" :
+            $"Also use it in the persona menu and compendium (replaces {System.IO.Path.GetFileName( Project.MenuModelPath )})";
+
+        public string MenuModelHint => Project.MenuModelPath == null
+            ? $"{Project.Destination.Name} has no Shadow model; menus and the compendium use its persona model, which is replaced."
+            : $"The game shows {Project.Destination.Name}'s Shadow model ({System.IO.Path.GetFileName( Project.MenuModelPath )}) in menus and the compendium. " +
+              "That file is also the Shadow in battle, so the Shadow turns into the new model too" +
+              ( Project.SourceModel.Category == PersonaSwapper.Core.Game.ModelCategory.Enemy ? " (with the source's own animations)." : ", playing its own animations." );
+
         public string MatchScaleLabel => $"Match original size ({SuggestedScale}%)";
 
         public decimal ModelScale

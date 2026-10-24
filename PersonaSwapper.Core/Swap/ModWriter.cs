@@ -31,6 +31,7 @@ namespace PersonaSwapper.Core.Swap
                 var target = Path.Combine( dataRoot, gamePath.Replace( '/', Path.DirectorySeparatorChar ) );
                 Directory.CreateDirectory( Path.GetDirectoryName( target )! );
                 File.WriteAllBytes( target, data );
+                Diagnostics.Log.Info( $"Wrote {gamePath} ({data.Length:N0} bytes)" );
             }
 
             var config = new
@@ -56,6 +57,7 @@ namespace PersonaSwapper.Core.Swap
             };
             File.WriteAllText( Path.Combine( modFolder, "ModConfig.json" ),
                                JsonSerializer.Serialize( config, new JsonSerializerOptions { WriteIndented = true } ) );
+            Diagnostics.Log.Info( $"Exported mod {info.Id} to {modFolder} ({build.Files.Count} files)" );
             return modFolder;
         }
 
