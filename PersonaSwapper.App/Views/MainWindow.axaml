@@ -222,8 +222,37 @@
                     </StackPanel>
 
                     <StackPanel Spacing="6">
-                      <TextBlock Classes="step" Text="Lore" />
-                      <TextBox IsEnabled="False" AcceptsReturn="True" TextWrapping="Wrap" Height="70" Text="{Binding LoreNote}" />
+                      <TextBlock Classes="step" Text="Battle model scale" />
+                      <Grid ColumnDefinitions="110,120,Auto,Auto">
+                        <TextBlock Grid.Column="0" Text="Scale %" Classes="fieldLabel" />
+                        <NumericUpDown Grid.Column="1" Minimum="10" Maximum="1000" Increment="5" FormatString="0" Value="{Binding ModelScale}" />
+                        <Button Grid.Column="2" Margin="8,0,0,0" Content="{Binding MatchScaleLabel}" Command="{Binding MatchScaleCommand}" />
+                        <Button Grid.Column="3" Margin="8,0,0,0" Content="Reset" Command="{Binding ResetScaleCommand}" />
+                      </Grid>
+                      <TextBlock Classes="hint" Text="{Binding ScaleHint}" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="6">
+                      <TextBlock Classes="step" Text="Compendium lore" />
+                      <TextBlock Classes="hint" IsVisible="{Binding !HasLore}" Text="This persona has no compendium entry in FACILITY/DATMYTH.BMD." />
+                      <Grid ColumnDefinitions="*,12,Auto" IsVisible="{Binding HasLore}">
+                        <DockPanel Grid.Column="0">
+                          <DockPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                            <Button DockPanel.Dock="Right" Content="Restore original" Command="{Binding RestoreLoreCommand}" />
+                            <TextBlock Text="{Binding LoreInfo}" VerticalAlignment="Center" TextWrapping="Wrap"
+                                       Foreground="{Binding LoreTooLong, Converter={x:Static views:Converters.WarningBrush}}" />
+                          </DockPanel>
+                          <TextBox AcceptsReturn="True" TextWrapping="Wrap" MinHeight="150" Text="{Binding Lore}"
+                                   Watermark="Write the compendium description. It's wrapped to the game's line width automatically." />
+                        </DockPanel>
+                        <Border Grid.Column="2" Padding="10,8" CornerRadius="6" Background="#1E2028" VerticalAlignment="Top">
+                          <StackPanel Spacing="4">
+                            <TextBlock Text="In game" FontSize="11" Foreground="#9AA0AA" />
+                            <TextBlock Text="{Binding LorePreview}" FontFamily="Menlo,Consolas,monospace" FontSize="12" Foreground="#E8E4DC"
+                                       Width="190" TextWrapping="NoWrap" />
+                          </StackPanel>
+                        </Border>
+                      </Grid>
                     </StackPanel>
                   </StackPanel>
                 </ScrollViewer>

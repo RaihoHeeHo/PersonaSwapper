@@ -7,6 +7,7 @@ using GFDLibrary.Animations;
 using PersonaSwapper.Core.Game;
 using PersonaSwapper.Core.Swap;
 using PersonaSwapper.Core.Preview;
+using PersonaSwapper.Core.Messages;
 using PersonaSwapper.Core.Tables;
 
 namespace PersonaSwapper.Cli
@@ -82,6 +83,10 @@ namespace PersonaSwapper.Cli
                 var name = slot.Kind == LearnableKind.Skill ? game.Names.Get( NameTable.Skills, slot.Id ) : game.Names.Get( NameTable.Traits, slot.Id );
                 Console.WriteLine( $"    {( slot.LevelsAfterBase == 0 ? "innate" : $"Lv {s.Level + slot.LevelsAfterBase}" ),-7} {slot.Kind,-5} {slot.Id,4} {name}" );
             }
+            var visual = VisualTable.Parse( game.Archive.Read( GameData.VisualTablePath ) );
+            Console.WriteLine( $"  Battle model scale {visual.Personas[id].BattleModelScale}%" );
+            var lore = new PersonaLore( MessageScript.Parse( game.Archive.Read( PersonaLore.BmdPath ) ) );
+            Console.WriteLine( "  Lore: " + lore.Get( id ).Replace( "\n", " / " ) );
             Console.WriteLine( "  Affinities: " + string.Join( ", ", Enum.GetValues<Element>().Take( 10 ).Select( e => $"{e} {a.GetAffinity( e )}" ) ) );
         }
 
@@ -98,6 +103,38 @@ namespace PersonaSwapper.Cli
                 Console.WriteLine( $"{path}: {( same ? "identical" : $"DIFFERENT ({original.Length} vs {rewritten.Length} bytes)" )}" );
                 ok &= same;
             }
+
+            // Message script and PAK round-trips.
+            var bmdBytes = game.Archive.Read( PersonaLore.BmdPath );
+            var script = MessageScript.Parse( bmdBytes );
+            var bmdSame = script.Serialize().AsSpan().SequenceEqual( bmdBytes );
+            Console.WriteLine( $"{PersonaLore.BmdPath}: {( bmdSame ? "identical" : "DIFFERENT" )} ({script.Dialogs.Count} dialogs)" );
+            ok &= bmdSame;
+
+            // Relocation table: decoding the game's table must give exactly the pointer locations our writer records.
+            var relOffset = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian( bmdBytes.AsSpan( 0x10 ) );
+            var relSize = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian( bmdBytes.AsSpan( 0x14 ) );
+            var decoded = RelocationTable.Decode( bmdBytes.AsSpan( relOffset, relSize ).ToArray(), 0x20 );
+            var reencoded = RelocationTable.Encode( decoded, 0x20 );
+            var relOk = reencoded.AsSpan().SequenceEqual( bmdBytes.AsSpan( relOffset, relSize ) );
+            Console.WriteLine( $"relocation table: {decoded.Count} pointers, re-encode {( relOk ? "identical" : "DIFFERENT" )}" );
+            ok &= relOk;
+
+            var pakBytes = game.Archive.Read( PersonaLore.PakPath );
+            var pak = PakArchive.Parse( pakBytes );
+            var pakSame = pak.Serialize().AsSpan().SequenceEqual( pakBytes );
+            Console.WriteLine( $"{PersonaLore.PakPath}: {( pakSame ? "identical" : "DIFFERENT" )} ({pak.Entries.Count} entries)" );
+            ok &= pakSame;
+
+            // Lore edit survives a write/read cycle and leaves other entries alone.
+            var lore = new PersonaLore( script );
+            var before6 = lore.Get( 6 );
+            lore.Set( 5, "A test entry long enough to need wrapping onto several lines of the compendium page." );
+            var reread = new PersonaLore( MessageScript.Parse( script.Serialize() ) );
+            var loreOk = reread.Get( 5 ).Split( '\n' ).All( l => l.Length <= PersonaLore.LineWidth ) &&
+                         reread.Get( 5 ).Replace( "\n", " " ).StartsWith( "A test entry long enough" ) && reread.Get( 6 ) == before6;
+            Console.WriteLine( $"lore edit: {( loreOk ? "ok" : "FAILED" )}\n{reread.Get( 5 )}" );
+            ok &= loreOk;
 
             // Edit-and-restore check through the typed views.
             var bytes = game.Archive.Read( GameData.PersonaTablePath );
@@ -144,6 +181,11 @@ namespace PersonaSwapper.Cli
 
             project.PersonaName = "Test Swap";
             project.Stats.Level = 5;
+            var heights = project.ModelHeights();
+            var suggested = project.SuggestMatchingScale();
+            Console.WriteLine( $"Heights: source {heights.Source:0.#}, destination {heights.Destination:0.#}; original scale {project.OriginalModelScale}% -> suggested {suggested}%" );
+            project.ModelScale = suggested;
+            project.LoreText = "Swapped in by Persona Swapper. This text replaces the original compendium entry.";
 
             var sw = Stopwatch.StartNew();
             var build = SwapBuilder.Build( project );
@@ -166,6 +208,11 @@ namespace PersonaSwapper.Cli
             var names = NameTable.Parse( build.Files[GameData.NameTablePath] );
             var personas = PersonaTable.Parse( build.Files[GameData.PersonaTablePath] );
             Console.WriteLine( $"  name now '{names.Get( NameTable.Personas, personaId )}', level {personas.Stats[personaId].Level}" );
+            Console.WriteLine( $"  scale now {VisualTable.Parse( build.Files[GameData.VisualTablePath] ).Personas[personaId].BattleModelScale}%" );
+            var outLore = new PersonaLore( MessageScript.Parse( build.Files[PersonaLore.BmdPath] ) );
+            var pakLore = new PersonaLore( MessageScript.Parse( PakArchive.Parse( build.Files[PersonaLore.PakPath] ).Get( PersonaLore.PakEntryName )! ) );
+            Console.WriteLine( $"  lore now: {outLore.Get( personaId ).Replace( "\n", " / " )}" );
+            Console.WriteLine( $"  PAK copy matches: {pakLore.Get( personaId ) == outLore.Get( personaId )}" );
 
             var folder = ModWriter.Write( modsFolder, new ModInfo( "p5rpc.personaswap.test", "Persona Swap Test", "Persona Swapper", $"{source.DisplayName} as {dest.Name}" ), build );
             Console.WriteLine( $"Wrote mod to {folder}" );

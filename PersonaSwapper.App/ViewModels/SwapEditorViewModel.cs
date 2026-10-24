@@ -4,6 +4,8 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using PersonaSwapper.Core.Messages;
 using PersonaSwapper.Core.Swap;
 using PersonaSwapper.Core.Tables;
 
@@ -23,6 +25,17 @@ namespace PersonaSwapper.App.ViewModels
             _name = project.PersonaName;
             _modId = $"p5rpc.personaswap.{Slug( project.Destination.Name )}";
             _modName = $"Persona Swap: {project.SourceModel.DisplayName.Split( '—' )[0].Trim()} as {project.Destination.Name}";
+
+            _originalLore = Unwrap( project.LoreText );
+            _lore = _originalLore;
+            var (sourceHeight, destinationHeight) = project.ModelHeights();
+            SuggestedScale = project.SuggestMatchingScale();
+            OriginalScale = project.OriginalModelScale;
+            ScaleHint = sourceHeight > 0 && destinationHeight > 0
+                ? $"Source model is {sourceHeight:0} units tall; {project.Destination.Name}'s original model is {destinationHeight:0} at {OriginalScale}%. " +
+                  $"{SuggestedScale}% keeps the same on-screen size."
+                : "Couldn't measure the models.";
+            UpdateLorePreview();
 
             for ( var i = 0; i < PersonaSkillsEntry.SkillSlotCount; i++ )
                 SkillRows.Add( new SkillRowViewModel( this, i ) );
@@ -113,9 +126,69 @@ namespace PersonaSwapper.App.ViewModels
         public bool PartyPersona { get => Has( PersonaFlags.PartyPersona ); set => SetFlag( PersonaFlags.PartyPersona, value ); }
         public bool Dlc { get => Has( PersonaFlags.Dlc ); set => SetFlag( PersonaFlags.Dlc, value ); }
 
+        // ---- Battle model scale ----
+
+        public short SuggestedScale { get; }
+
+        public short OriginalScale { get; }
+
+        public string ScaleHint { get; }
+
+        public string MatchScaleLabel => $"Match original size ({SuggestedScale}%)";
+
+        public decimal ModelScale
+        {
+            get => Project.ModelScale;
+            set { Project.ModelScale = (short)Math.Clamp( (int)Math.Round( value ), 10, 1000 ); OnPropertyChanged(); }
+        }
+
+        [RelayCommand]
+        private void MatchScale() => ModelScale = SuggestedScale;
+
+        [RelayCommand]
+        private void ResetScale() => ModelScale = OriginalScale;
+
         // ---- Lore ----
 
-        public string LoreNote => "Compendium lore editing (FACILITY/DATMYTH.BMD) is coming in a later version.";
+        private readonly string _originalLore;
+
+        public bool HasLore => Project.HasLore;
+
+        /// <summary>Lore as one paragraph; it's re-wrapped to the compendium's line width when saved.</summary>
+        [ObservableProperty] private string _lore;
+        [ObservableProperty] private string _lorePreview = "";
+        [ObservableProperty] private string _loreInfo = "";
+        [ObservableProperty] private bool _loreTooLong;
+
+        partial void OnLoreChanged( string value )
+        {
+            try
+            {
+                Project.LoreText = value;
+            }
+            catch ( ArgumentException e )
+            {
+                LoreInfo = e.Message;
+                LoreTooLong = true;
+                return;
+            }
+            UpdateLorePreview();
+        }
+
+        [RelayCommand]
+        private void RestoreLore() => Lore = _originalLore;
+
+        private void UpdateLorePreview()
+        {
+            var lines = PersonaLore.Wrap( Lore, PersonaLore.LineWidth );
+            LorePreview = string.Join( "\n", lines );
+            LoreTooLong = lines.Count > PersonaLore.MaxLines;
+            LoreInfo = LoreTooLong
+                ? $"{lines.Count} lines: the game's longest entries have {PersonaLore.MaxLines}, so the end may be cut off."
+                : $"{lines.Count} of {PersonaLore.MaxLines} lines";
+        }
+
+        private static string Unwrap( string text ) => string.Join( " ", text.Split( '\n' ).Select( l => l.Trim() ).Where( l => l.Length > 0 ) );
 
         // ---- Preview ----
 

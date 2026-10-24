@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using PersonaSwapper.Core.Game;
+using PersonaSwapper.Core.Messages;
+using PersonaSwapper.Core.Preview;
 using PersonaSwapper.Core.Tables;
 
 namespace PersonaSwapper.Core.Swap
@@ -59,6 +61,9 @@ namespace PersonaSwapper.Core.Swap
             Personas = PersonaTable.Parse( game.Archive.Read( GameData.PersonaTablePath ) );
             Units = UnitTable.Parse( game.Archive.Read( GameData.UnitTablePath ) );
             Names = NameTable.Parse( game.Archive.Read( GameData.NameTablePath ) );
+            Visual = VisualTable.Parse( game.Archive.Read( GameData.VisualTablePath ) );
+            if ( game.Archive.Contains( PersonaLore.BmdPath ) )
+                Lore = new PersonaLore( MessageScript.Parse( game.Archive.Read( PersonaLore.BmdPath ) ) );
 
             Slots = DefaultSlots( game, sourceModel, destination ).ToList();
         }
@@ -75,6 +80,11 @@ namespace PersonaSwapper.Core.Swap
 
         public NameTable Names { get; }
 
+        public VisualTable Visual { get; }
+
+        /// <summary>Compendium lore, or null if the language CPK has no DATMYTH.BMD.</summary>
+        public PersonaLore? Lore { get; }
+
         public List<SlotAssignment> Slots { get; }
 
         /// <summary>Also replace the compendium/analysis models (PSZ, PSZX) with the source model.</summary>
@@ -90,6 +100,41 @@ namespace PersonaSwapper.Core.Swap
         {
             get => Names.Get( NameTable.Personas, Destination.Id );
             set => Names.Set( NameTable.Personas, Destination.Id, value );
+        }
+
+        public bool HasLore => Lore?.Has( Destination.Id ) == true;
+
+        public string LoreText
+        {
+            get => Lore?.Get( Destination.Id ) ?? "";
+            set => Lore?.Set( Destination.Id, value );
+        }
+
+        /// <summary>Battle model scale in percent, from VISUAL.TBL.</summary>
+        public short ModelScale
+        {
+            get => Visual.Personas[Destination.Id].BattleModelScale;
+            set => Visual.Personas[Destination.Id].BattleModelScale = value;
+        }
+
+        /// <summary>The destination persona's scale in the unmodified game.</summary>
+        public short OriginalModelScale => VisualTable.Parse( Game.Archive.Read( GameData.VisualTablePath ) ).Personas[Destination.Id].BattleModelScale;
+
+        /// <summary>Bind-pose heights (model units) of the source model and the destination persona's original model.</summary>
+        public (float Source, float Destination) ModelHeights()
+            => (ModelMetrics.Height( Game, SourceModel.Path ), ModelMetrics.Height( Game, Destination.BattleModelPath ));
+
+        /// <summary>
+        /// Scale that makes the source model appear the same height in battle as the destination persona does
+        /// in the base game, rounded to 5%.
+        /// </summary>
+        public short SuggestMatchingScale()
+        {
+            var (source, destination) = ModelHeights();
+            if ( source <= 0 || destination <= 0 )
+                return OriginalModelScale;
+            var scale = OriginalModelScale * destination / source;
+            return (short)Math.Clamp( (int)( Math.Round( scale / 5 ) * 5 ), 10, 1000 );
         }
 
         public string? DestinationPackPath( AnimationPackKind kind ) => kind switch

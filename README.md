@@ -4,7 +4,8 @@ A native macOS (and Windows/Linux) tool for Persona 5 Royal that turns any model
 
 1. **Source model** — any GMD in `BASE.CPK`: Shadows and bosses, other personas, party members, NPCs.
 2. **Destination persona** — the persona whose slot the model takes over.
-3. **Edit and preview** — persona data (name, arcana, level, stats, growth, flags, 16 skills/traits, 20 affinities),
+3. **Edit and preview** — persona data (name, arcana, level, stats, growth, flags, 16 skills/traits, 20 affinities,
+   battle model scale, compendium lore),
    an animation table (one row per persona animation slot, filled from any GAP in the game), and a live 3D preview
    of the selected slot playing on the source model.
 4. **Export** — writes a Reloaded-II mod (Persona Essentials) with the model, rebuilt animation packs and any edited tables.
@@ -29,7 +30,8 @@ The game folder defaults to `~/Library/Application Support/Steam/steamapps/commo
 |---|---|
 | `MODEL/CHARACTER/PERSONA/<id>/PS<id>.GMD` (and `PSZ`/`PSZX` compendium models) | the source model |
 | `BPS<id>_000.GAP` (battle animations, 11 slots) and `GT<id>.GAP` | the persona's own pack with each slot replaced as chosen |
-| `BATTLE/TABLE/PERSONA.TBL`, `UNIT.TBL`, `NAME.TBL` | only if edited; Persona Essentials merges them with other mods |
+| `BATTLE/TABLE/PERSONA.TBL`, `UNIT.TBL`, `NAME.TBL`, `VISUAL.TBL` | only if edited; Persona Essentials merges them with other mods |
+| `FACILITY/DATMYTH.BMD` and its copy `datMyth.bmd` in `INIT/DATMSG.PAK` | only if the lore was edited |
 
 Findings this is based on (checked against the game files):
 - Persona folders are named by persona ID. All 302 personas use battle slots 0 and 5–10; slots 1–4 are unused.
@@ -46,10 +48,15 @@ Findings this is based on (checked against the game files):
 - `PersonaSwapper.Cli` (`pswap`) — test harness: catalog, persona dumps, table round-trips, slot statistics, swaps, PNG renders.
 - `PersonaSwapper.Snapshot` — runs the GUI headlessly and saves screenshots.
 
+Lore and scale details:
+- Lore is one single-page message per persona (`myth_<id>`). The editor keeps the page's leading control codes,
+  wraps text at 22 characters (99% of the game's lines are 22 or shorter) and warns past 10 lines (the game's longest entries).
+- Battle model scale is `VISUAL.TBL` segment 2, byte 96 of each persona's 148-byte entry (100% for 295 of 464 personas).
+  "Match original size" sets `original scale × destination model height ÷ source model height`, so the new model
+  stands as tall in battle as the persona it replaces.
+
 ## Not done yet
 
-- Compendium lore text (`FACILITY/DATMYTH.BMD`).
-- Battle model scale (`VISUAL.TBL`), for very large or small source models.
 - Bone-name mapping for retargeting between different skeletons.
 
 ## Credits

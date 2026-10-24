@@ -63,6 +63,15 @@ namespace PersonaSwapper.Snapshot
                 scroller.Offset = new Vector( 0, 1050 );
                 Pump( 0.3 );
                 Capture( window, outDir, "5-affinities" );
+                scroller.Offset = new Vector( 0, scroller.Extent.Height );
+                Pump( 0.3 );
+                Capture( window, outDir, "6-scale-lore" );
+
+                // Edit through the UI view model, as a user would.
+                vm.Editor!.Lore = "A frosty test entry written in the Persona Swapper to check that the compendium text wraps the way the game expects it to.";
+                vm.Editor.MatchScaleCommand.Execute( null );
+                Pump( 0.3 );
+                Capture( window, outDir, "7-scale-lore-edited" );
             }
 
             // Export through the UI command and check the result.

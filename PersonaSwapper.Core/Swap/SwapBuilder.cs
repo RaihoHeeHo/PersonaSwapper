@@ -93,6 +93,26 @@ namespace PersonaSwapper.Core.Swap
             AddIfChanged( result, game, GameData.PersonaTablePath, project.Personas.Serialize() );
             AddIfChanged( result, game, GameData.UnitTablePath, project.Units.Serialize() );
             AddIfChanged( result, game, GameData.NameTablePath, project.Names.Serialize() );
+            AddIfChanged( result, game, GameData.VisualTablePath, project.Visual.Serialize() );
+
+            // 4. Lore: the compendium reads FACILITY/DATMYTH.BMD; an identical copy lives in INIT/DATMSG.PAK.
+            if ( project.Lore != null )
+            {
+                var bmd = project.Lore.Script.Serialize();
+                if ( !game.Archive.Read( Messages.PersonaLore.BmdPath ).AsSpan().SequenceEqual( bmd ) )
+                {
+                    result.Files[Messages.PersonaLore.BmdPath] = bmd;
+                    if ( game.Archive.Contains( Messages.PersonaLore.PakPath ) )
+                    {
+                        var pak = Messages.PakArchive.Parse( game.Archive.Read( Messages.PersonaLore.PakPath ) );
+                        if ( pak.Get( Messages.PersonaLore.PakEntryName ) != null )
+                        {
+                            pak.Set( Messages.PersonaLore.PakEntryName, bmd );
+                            result.Files[Messages.PersonaLore.PakPath] = pak.Serialize();
+                        }
+                    }
+                }
+            }
 
             return result;
         }
