@@ -12,7 +12,10 @@ A native macOS (and Windows/Linux) tool for Persona 5 Royal that turns any model
 
 ## Run it
 
-Requirements: the .NET 8 SDK (`brew install --cask dotnet-sdk`), and the `GFD-Studio-macOS` folder next to this one.
+Download a build from the [Releases](https://github.com/RaihoHeeHo/PersonaSwapper/releases) page, or build from source.
+
+Requirements for building: the .NET 8 SDK (`brew install --cask dotnet-sdk`), and the GFD-Studio macOS port
+(`git clone -b macos-port https://github.com/RaihoHeeHo/GFD-Studio GFD-Studio-macOS`) in the folder next to this one.
 
 Double-click **Run Persona Swapper.command**, or from Terminal:
 
@@ -101,6 +104,11 @@ code over many models outside the GUI. Across all 2,194 models: no failures; 14 
 ## Not done yet
 
 - Bone-name mapping for retargeting between different skeletons.
+
+## License
+
+Persona Swapper is released under the GNU General Public License v3.0 (see `LICENSE`).
+It is a fan-made tool, not affiliated with Atlus or SEGA, and contains no game files: it reads your own copy of the game.
 
 ## Credits
 

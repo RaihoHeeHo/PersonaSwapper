@@ -8,7 +8,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-pause() { read -n 1 -s -r -p "Press any key to close."; echo; }
+# On GitHub Actions (CI=true) there's nobody to press a key or look at Finder.
+pause() { [ -n "${CI:-}" ] || { read -n 1 -s -r -p "Press any key to close."; echo; }; }
 trap 'echo; echo "Build failed - see the messages above."; pause; exit 1' ERR
 
 if ! command -v dotnet >/dev/null 2>&1; then
@@ -24,7 +25,8 @@ if [ ! -d "../GFD-Studio-macOS/GFDLibrary" ]; then
 fi
 
 PROJECT="PersonaSwapper.App/PersonaSwapper.App.csproj"
-VERSION=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' "$PROJECT")
+# VERSION can be passed in (the release workflow uses the tag, e.g. v1.2.0 -> 1.2.0).
+VERSION=${VERSION:-$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' "$PROJECT")}
 OUT="$(pwd)/release"
 WORK="$OUT/.work"
 rm -rf "$OUT"
@@ -34,7 +36,7 @@ publish() {
   local rid=$1; shift
   echo "==> Building for $rid"
   dotnet publish "$PROJECT" -c Release -r "$rid" --self-contained true \
-    -p:DebugType=none -p:DebugSymbols=false -o "$WORK/$rid" "$@"
+    -p:DebugType=none -p:DebugSymbols=false -p:Version="$VERSION" -o "$WORK/$rid" "$@"
 }
 
 publish osx-arm64
@@ -96,5 +98,5 @@ rm -rf "$WORK"
 echo
 echo "Done. Builds are in: $OUT"
 ls -1 "$OUT"
-open "$OUT"
+[ -n "${CI:-}" ] || open "$OUT"
 pause

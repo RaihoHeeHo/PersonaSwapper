@@ -1,0 +1,52 @@
+# Builds the macOS apps (Apple Silicon and Intel) and the Windows exe.
+# Push a tag like v1.0.0 to publish them as a GitHub release; or run it by hand from the
+# Actions tab to get the builds as a downloadable artifact.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Check out Persona Swapper
+        uses: actions/checkout@v4
+        with:
+          path: PersonaSwapper
+
+      - name: Check out the GFD-Studio macOS port (provides GFDLibrary)
+        uses: actions/checkout@v4
+        with:
+          repository: RaihoHeeHo/GFD-Studio
+          ref: macos-port
+          path: GFD-Studio-macOS
+
+      - name: Install .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build
+        working-directory: PersonaSwapper
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then export VERSION="${GITHUB_REF_NAME#v}"; fi
+          ./"Build Release.command"
+
+      - name: Upload builds
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersonaSwapper-builds
+          path: PersonaSwapper/release/*.zip
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: PersonaSwapper/release/*.zip
+          generate_release_notes: true
