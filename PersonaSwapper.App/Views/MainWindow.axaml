@@ -1,0 +1,311 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:PersonaSwapper.App.ViewModels"
+        xmlns:game="using:PersonaSwapper.Core.Game"
+        xmlns:swap="using:PersonaSwapper.Core.Swap"
+        xmlns:views="using:PersonaSwapper.App.Views"
+        mc:Ignorable="d" d:DesignWidth="1500" d:DesignHeight="900"
+        x:Class="PersonaSwapper.App.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="Persona Swapper"
+        Width="1560" Height="940" MinWidth="1100" MinHeight="680">
+
+  <Grid RowDefinitions="Auto,*,Auto">
+
+    <!-- Folders -->
+    <Border Grid.Row="0" Padding="12,10" BorderThickness="0,0,0,1"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto,24,Auto,*,Auto" RowDefinitions="Auto">
+        <TextBlock Grid.Column="0" Text="Game folder" Classes="fieldLabel" />
+        <TextBox Grid.Column="1" Text="{Binding GameFolder}" Watermark="…/steamapps/common/P5R" />
+        <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0" Click="OnBrowseGameFolder" />
+        <Button Grid.Column="3" Content="Reload" Margin="6,0,0,0" Command="{Binding LoadGameCommand}" />
+        <TextBlock Grid.Column="5" Text="Reloaded-II mods" Classes="fieldLabel" />
+        <TextBox Grid.Column="6" Text="{Binding ModsFolder}" Watermark="…/Reloaded-II/Mods" />
+        <Button Grid.Column="7" Content="Browse…" Margin="6,0,0,0" Click="OnBrowseModsFolder" />
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="1" ColumnDefinitions="300,*,740" Margin="10">
+
+      <!-- Step 1 + 2: pickers -->
+      <Grid Grid.Column="0" RowDefinitions="*,10,*" IsEnabled="{Binding IsGameLoaded}">
+        <Border Grid.Row="0" Classes="panel">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Top" Classes="step" Text="1 · Source model" />
+            <ComboBox DockPanel.Dock="Top" HorizontalAlignment="Stretch" Margin="0,0,0,6"
+                      ItemsSource="{x:Static vm:MainViewModel.Categories}"
+                      SelectedIndex="{Binding SourceCategory}" />
+            <TextBox DockPanel.Dock="Top" Margin="0,0,0,6" Watermark="Search models (name, ID, file)…"
+                     Text="{Binding SourceSearch}" />
+            <ListBox ItemsSource="{Binding SourceModels}" SelectedItem="{Binding SelectedSource}">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="game:ModelEntry">
+                  <StackPanel Spacing="1">
+                    <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding Path}" Classes="hint" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </DockPanel>
+        </Border>
+
+        <Border Grid.Row="2" Classes="panel">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Top" Classes="step" Text="2 · Destination persona" />
+            <TextBox DockPanel.Dock="Top" Margin="0,0,0,6" Watermark="Search personas…"
+                     Text="{Binding DestinationSearch}" />
+            <ListBox ItemsSource="{Binding Destinations}" SelectedItem="{Binding SelectedDestination}">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="game:PersonaEntry">
+                  <TextBlock Text="{Binding}" />
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </DockPanel>
+        </Border>
+      </Grid>
+
+      <!-- Preview -->
+      <Border Grid.Column="1" Classes="panel" Margin="10,0">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Top" Classes="step" Text="Preview" />
+          <Grid DockPanel.Dock="Bottom" ColumnDefinitions="Auto,Auto,140,*" Margin="0,8,0,0">
+            <Button Grid.Column="0" Width="84" Command="{Binding Preview.TogglePlayCommand}"
+                    Content="{Binding Preview.IsPlaying, Converter={x:Static views:Converters.PlayPause}}" />
+            <TextBlock Grid.Column="1" Text="Speed" Classes="fieldLabel" Margin="12,0,6,0" />
+            <Slider Grid.Column="2" Minimum="0.1" Maximum="2" Value="{Binding Preview.Speed}" />
+            <TextBlock Grid.Column="3" Text="{Binding Preview.Message}" Classes="hint" VerticalAlignment="Center" Margin="12,0,0,0" />
+          </Grid>
+          <Border CornerRadius="6" ClipToBounds="True" Background="#1E2028">
+            <views:ModelPreview x:Name="PreviewHost" DataContext="{Binding Preview}" />
+          </Border>
+        </DockPanel>
+      </Border>
+
+      <!-- Step 3: tables -->
+      <Border Grid.Column="2" Classes="panel">
+        <Panel>
+          <TextBlock Classes="hint" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
+                     IsVisible="{Binding !HasEditor}"
+                     Text="Pick a source model and a destination persona.&#x0a;Their persona data and animation table appear here." />
+
+          <Panel IsVisible="{Binding HasEditor}">
+          <DockPanel DataContext="{Binding Editor}" x:DataType="vm:SwapEditorViewModel">
+            <TextBlock DockPanel.Dock="Top" Classes="step" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+
+            <!-- Export -->
+            <Border DockPanel.Dock="Bottom" Margin="0,10,0,0" Padding="0,10,0,0" BorderThickness="0,1,0,0"
+                    BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+              <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,6,Auto">
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Mod ID" Classes="fieldLabel" />
+                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding ModId}" />
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Mod name" Classes="fieldLabel" />
+                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding ModName}" />
+                <Button Grid.Row="0" Grid.RowSpan="3" Grid.Column="2" Margin="10,0,0,0" Padding="20,10" VerticalAlignment="Stretch"
+                        Classes="accent" Content="Export mod"
+                        Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).ExportCommand}" />
+              </Grid>
+            </Border>
+
+            <TabControl>
+              <!-- Persona data -->
+              <TabItem Header="Persona data">
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                  <StackPanel Spacing="14" Margin="0,8,8,8">
+
+                    <Grid ColumnDefinitions="Auto,*,16,Auto,*" RowDefinitions="Auto,8,Auto">
+                      <TextBlock Grid.Row="0" Grid.Column="0" Text="Name" Classes="fieldLabel" />
+                      <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding Name}" />
+                      <TextBlock Grid.Row="0" Grid.Column="3" Text="Arcana" Classes="fieldLabel" />
+                      <ComboBox Grid.Row="0" Grid.Column="4" HorizontalAlignment="Stretch"
+                                ItemsSource="{Binding ArcanaOptions}" SelectedItem="{Binding Arcana}" />
+                      <TextBlock Grid.Row="2" Grid.Column="0" Text="Level" Classes="fieldLabel" />
+                      <NumericUpDown Grid.Row="2" Grid.Column="1" ShowButtonSpinner="False" Minimum="1" Maximum="99" Increment="1" FormatString="0"
+                                     Value="{Binding Level}" />
+                      <TextBlock Grid.Row="2" Grid.Column="3" Text="Inherits" Classes="fieldLabel" />
+                      <ComboBox Grid.Row="2" Grid.Column="4" HorizontalAlignment="Stretch"
+                                ItemsSource="{Binding InheritanceOptions}" SelectedItem="{Binding Inheritance}" />
+                    </Grid>
+                    <TextBlock Text="{Binding NameError}" Foreground="#E0605A" IsVisible="{Binding NameError, Converter={x:Static ObjectConverters.IsNotNull}}" />
+
+                    <StackPanel Spacing="6">
+                      <TextBlock Classes="step" Text="Stats" />
+                      <Grid ColumnDefinitions="110,*,*,*,*,*" RowDefinitions="Auto,4,Auto,4,Auto">
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="St" HorizontalAlignment="Center" />
+                        <TextBlock Grid.Row="0" Grid.Column="2" Text="Ma" HorizontalAlignment="Center" />
+                        <TextBlock Grid.Row="0" Grid.Column="3" Text="En" HorizontalAlignment="Center" />
+                        <TextBlock Grid.Row="0" Grid.Column="4" Text="Ag" HorizontalAlignment="Center" />
+                        <TextBlock Grid.Row="0" Grid.Column="5" Text="Lu" HorizontalAlignment="Center" />
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Base" Classes="fieldLabel" />
+                        <NumericUpDown ShowButtonSpinner="False" Grid.Row="2" Grid.Column="1" Margin="2" Minimum="1" Maximum="99" FormatString="0" Value="{Binding Strength}" />
+                        <NumericUpDown ShowButtonSpinner="False" Grid.Row="2" Grid.Column="2" Margin="2" Minimum="1" Maximum="99" FormatString="0" Value="{Binding Magic}" />
+                        <NumericUpDown ShowButtonSpinner="False" Grid.Row="2" Grid.Column="3" Margin="2" Minimum="1" Maximum="99" FormatString="0" Value="{Binding Endurance}" />
+                        <NumericUpDown ShowButtonSpinner="False" Grid.Row="2" Grid.Column="4" Margin="2" Minimum="1" Maximum="99" FormatString="0" Value="{Binding Agility}" />
+                        <NumericUpDown ShowButtonSpinner="False" Grid.Row="2" Grid.Column="5" Margin="2" Minimum="1" Maximum="99" FormatString="0" Value="{Binding Luck}" />
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Growth weight" Classes="fieldLabel" />
+                        <NumericUpDown ShowButtonSpinner="False" Grid.Row="4" Grid.Column="1" Margin="2" Minimum="0" Maximum="255" FormatString="0" Value="{Binding GrowthStrength}" />
+                        <NumericUpDown ShowButtonSpinner="False" Grid.Row="4" Grid.Column="2" Margin="2" Minimum="0" Maximum="255" FormatString="0" Value="{Binding GrowthMagic}" />
+                        <NumericUpDown ShowButtonSpinner="False" Grid.Row="4" Grid.Column="3" Margin="2" Minimum="0" Maximum="255" FormatString="0" Value="{Binding GrowthEndurance}" />
+                        <NumericUpDown ShowButtonSpinner="False" Grid.Row="4" Grid.Column="4" Margin="2" Minimum="0" Maximum="255" FormatString="0" Value="{Binding GrowthAgility}" />
+                        <NumericUpDown ShowButtonSpinner="False" Grid.Row="4" Grid.Column="5" Margin="2" Minimum="0" Maximum="255" FormatString="0" Value="{Binding GrowthLuck}" />
+                      </Grid>
+                      <TextBlock Classes="hint" Text="On each level-up the game rolls 3 times; a stat's chance is its weight divided by the total." />
+                    </StackPanel>
+
+                    <WrapPanel>
+                      <CheckBox Margin="0,0,16,0" Content="Treasure demon" IsChecked="{Binding TreasureDemon}" />
+                      <CheckBox Margin="0,0,16,0" Content="No normal fusion" IsChecked="{Binding NoNormalFusion}" />
+                      <CheckBox Margin="0,0,16,0" Content="Not registerable" IsChecked="{Binding NotRegisterable}" />
+                      <CheckBox Margin="0,0,16,0" Content="Story persona" IsChecked="{Binding StoryPersona}" />
+                      <CheckBox Margin="0,0,16,0" Content="Party persona" IsChecked="{Binding PartyPersona}" />
+                      <CheckBox Margin="0,0,16,0" Content="DLC" IsChecked="{Binding Dlc}" />
+                    </WrapPanel>
+
+                    <StackPanel Spacing="6">
+                      <TextBlock Classes="step" Text="Skills" />
+                      <DataGrid ItemsSource="{Binding SkillRows}" AutoGenerateColumns="False" CanUserSortColumns="False" Height="430">
+                        <DataGrid.Columns>
+                          <DataGridTextColumn Header="#" Binding="{Binding Number}" IsReadOnly="True" Width="36" />
+                          <DataGridTemplateColumn Header="Type" Width="100">
+                            <DataGridTemplateColumn.CellTemplate>
+                              <DataTemplate x:DataType="vm:SkillRowViewModel">
+                                <ComboBox HorizontalAlignment="Stretch" ItemsSource="{x:Static vm:SkillRowViewModel.KindOptions}" SelectedIndex="{Binding KindIndex}" />
+                              </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                          </DataGridTemplateColumn>
+                          <DataGridTemplateColumn Header="Skill / trait" Width="*">
+                            <DataGridTemplateColumn.CellTemplate>
+                              <DataTemplate x:DataType="vm:SkillRowViewModel">
+                                <ComboBox HorizontalAlignment="Stretch" IsEnabled="{Binding IsUsed}"
+                                          ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}" />
+                              </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                          </DataGridTemplateColumn>
+                          <DataGridTemplateColumn Header="+Levels" Width="96">
+                            <DataGridTemplateColumn.CellTemplate>
+                              <DataTemplate x:DataType="vm:SkillRowViewModel">
+                                <NumericUpDown ShowButtonSpinner="False" Minimum="0" Maximum="98" FormatString="0" IsEnabled="{Binding IsUsed}" Value="{Binding LevelsAfterBase}" ToolTip.Tip="Levels after the base level when the skill is learned (0 = innate)" />
+                              </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                          </DataGridTemplateColumn>
+                          <DataGridTextColumn Header="Learned" Binding="{Binding LearnedAt}" IsReadOnly="True" Width="84" />
+                        </DataGrid.Columns>
+                      </DataGrid>
+                    </StackPanel>
+
+                    <StackPanel Spacing="6">
+                      <TextBlock Classes="step" Text="Affinities" />
+                      <DataGrid ItemsSource="{Binding AffinityRows}" AutoGenerateColumns="False" CanUserSortColumns="False" Height="460">
+                        <DataGrid.Columns>
+                          <DataGridTextColumn Header="Element" Binding="{Binding Element}" IsReadOnly="True" Width="*" />
+                          <DataGridTemplateColumn Header="Affinity" Width="150">
+                            <DataGridTemplateColumn.CellTemplate>
+                              <DataTemplate x:DataType="vm:AffinityRowViewModel">
+                                <ComboBox HorizontalAlignment="Stretch" ItemsSource="{x:Static vm:AffinityRowViewModel.AffinityOptions}" SelectedItem="{Binding Affinity}" />
+                              </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                          </DataGridTemplateColumn>
+                          <DataGridTemplateColumn Header="Multiplier %" Width="140">
+                            <DataGridTemplateColumn.CellTemplate>
+                              <DataTemplate x:DataType="vm:AffinityRowViewModel">
+                                <NumericUpDown Minimum="0" Maximum="1275" Increment="5" FormatString="0" Value="{Binding MultiplierPercent}" />
+                              </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                          </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                      </DataGrid>
+                      <TextBlock Classes="hint" Text="Multiplier 100% is normal damage; 0 means 'use the affinity's default'." />
+                    </StackPanel>
+
+                    <StackPanel Spacing="6">
+                      <TextBlock Classes="step" Text="Lore" />
+                      <TextBox IsEnabled="False" AcceptsReturn="True" TextWrapping="Wrap" Height="70" Text="{Binding LoreNote}" />
+                    </StackPanel>
+                  </StackPanel>
+                </ScrollViewer>
+              </TabItem>
+
+              <!-- Animations -->
+              <TabItem Header="Animations">
+                <DockPanel Margin="0,8,0,0">
+                  <TextBlock DockPanel.Dock="Top" Classes="hint" Margin="0,0,0,8"
+                             Text="Each row is one of the persona's animation slots. Select a row to preview it on the source model. 'Bones' shows how many animated bones exist on the source model; few means the motion won't fit." />
+                  <Grid DockPanel.Dock="Bottom" ColumnDefinitions="Auto,*" Margin="0,8,0,0">
+                    <TextBlock Grid.Column="0" Classes="fieldLabel" Text="Use any pack for the selected slot" />
+                    <AutoCompleteBox Grid.Column="1" x:Name="PackSearch" FilterMode="Contains" MinimumPrefixLength="2" MaxDropDownHeight="320"
+                                     Watermark="Type part of a GAP path, e.g. BEM0123 or BB0001"
+                                     ItemsSource="{Binding Lookups.AllAnimationPacks}"
+                                     SelectionChanged="OnPackSearchSelected" />
+                  </Grid>
+                  <DataGrid ItemsSource="{Binding SlotRows}" SelectedItem="{Binding SelectedSlot}" AutoGenerateColumns="False" CanUserSortColumns="False">
+                    <DataGrid.Columns>
+                      <DataGridTextColumn Header="Slot" Binding="{Binding SlotLabel}" IsReadOnly="True" Width="150" />
+                      <DataGridTemplateColumn Header="Source pack" Width="*">
+                        <DataGridTemplateColumn.CellTemplate>
+                          <DataTemplate x:DataType="vm:AnimationSlotViewModel">
+                            <ComboBox HorizontalAlignment="Stretch" IsEnabled="{Binding IsActive}"
+                                      ItemsSource="{Binding PackOptions}" SelectedItem="{Binding SelectedPack}">
+                              <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                  <TextBlock Text="{Binding Converter={x:Static views:Converters.FileName}}" ToolTip.Tip="{Binding}" />
+                                </DataTemplate>
+                              </ComboBox.ItemTemplate>
+                            </ComboBox>
+                          </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                      </DataGridTemplateColumn>
+                      <DataGridTemplateColumn Header="Animation" Width="150">
+                        <DataGridTemplateColumn.CellTemplate>
+                          <DataTemplate x:DataType="vm:AnimationSlotViewModel">
+                            <ComboBox HorizontalAlignment="Stretch" IsEnabled="{Binding IsActive}"
+                                      ItemsSource="{Binding AnimationOptions}" SelectedItem="{Binding SelectedAnimation}" />
+                          </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                      </DataGridTemplateColumn>
+                      <DataGridTemplateColumn Header="Retarget" Width="82">
+                        <DataGridTemplateColumn.CellTemplate>
+                          <DataTemplate x:DataType="vm:AnimationSlotViewModel">
+                            <CheckBox HorizontalAlignment="Center" IsEnabled="{Binding IsActive}" IsChecked="{Binding Retarget}" />
+                          </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                      </DataGridTemplateColumn>
+                      <DataGridTemplateColumn Header="Empty" Width="66">
+                        <DataGridTemplateColumn.CellTemplate>
+                          <DataTemplate x:DataType="vm:AnimationSlotViewModel">
+                            <CheckBox HorizontalAlignment="Center" IsChecked="{Binding Empty}" />
+                          </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                      </DataGridTemplateColumn>
+                      <DataGridTemplateColumn Header="Bones" Width="76">
+                        <DataGridTemplateColumn.CellTemplate>
+                          <DataTemplate x:DataType="vm:AnimationSlotViewModel">
+                            <TextBlock VerticalAlignment="Center" Margin="6,0" Text="{Binding Coverage}"
+                                       Foreground="{Binding CoverageWarning, Converter={x:Static views:Converters.WarningBrush}}" />
+                          </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                      </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                  </DataGrid>
+                </DockPanel>
+              </TabItem>
+            </TabControl>
+          </DockPanel>
+          </Panel>
+        </Panel>
+      </Border>
+    </Grid>
+
+    <!-- Status -->
+    <Border Grid.Row="2" Padding="12,6" BorderThickness="0,1,0,0"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+      <DockPanel>
+        <ProgressBar DockPanel.Dock="Right" Width="120" IsIndeterminate="True" IsVisible="{Binding IsBusy}" />
+        <TextBlock Text="{Binding Status}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+      </DockPanel>
+    </Border>
+  </Grid>
+</Window>
