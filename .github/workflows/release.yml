@@ -1,9 +1,9 @@
-# Builds the macOS apps (Apple Silicon and Intel) and the Windows exe on every push to main.
+# Builds Persona Swapper for macOS (Apple Silicon, Intel), Windows (x64) and Linux (x64, arm64) on every push to main.
 # Publishing a release:
 #   - bump <Version> in PersonaSwapper.App/PersonaSwapper.App.csproj and push to main: release v<Version>
 #     is created automatically (once per version), or
 #   - create a release on GitHub (or push a v* tag): the builds are attached to it.
-# Every run also keeps the builds as a downloadable artifact on the run's page.
+# Every run also keeps the builds as downloadable artifacts on the run's page.
 name: Build and release
 
 on:
@@ -22,27 +22,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    runs-on: macos-14
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      publish: ${{ steps.version.outputs.publish }}
     steps:
-      - name: Check out Persona Swapper
-        uses: actions/checkout@v4
-        with:
-          path: PersonaSwapper
-
-      - name: Check out the GFD-Studio macOS port (provides GFDLibrary)
-        uses: actions/checkout@v4
-        with:
-          repository: RaihoHeeHo/GFD-Studio
-          ref: macos-port
-          path: GFD-Studio-macOS
-          submodules: recursive # Ports/ compiles the Scarlet and tga-decoder-cs submodule sources
-
-      - name: Install .NET 8
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
-
+      - uses: actions/checkout@v4
       - name: Work out the version and release tag
         id: version
         env:
@@ -53,24 +40,43 @@ jobs:
           elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
             tag="$GITHUB_REF_NAME"
           else
-            v=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' PersonaSwapper/PersonaSwapper.App/PersonaSwapper.App.csproj)
+            v=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' PersonaSwapper.App/PersonaSwapper.App.csproj)
             tag="v$v"
           fi
-          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
           # A push to main publishes only if this version hasn't been released yet.
           publish=true
           if [[ "${{ github.event_name }}" == "push" && "$GITHUB_REF" == refs/heads/* ]]; then
             if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then publish=false; fi
           fi
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then publish=false; fi
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
           echo "Version ${tag#v}, tag $tag, publish $publish"
 
+  macos-windows:
+    needs: version
+    runs-on: macos-14
+    steps:
+      - name: Check out Persona Swapper
+        uses: actions/checkout@v4
+        with:
+          path: PersonaSwapper
+      - name: Check out the GFD-Studio macOS port (provides GFDLibrary)
+        uses: actions/checkout@v4
+        with:
+          repository: RaihoHeeHo/GFD-Studio
+          ref: macos-port
+          path: GFD-Studio-macOS
+          submodules: recursive # Ports/ compiles the Scarlet and tga-decoder-cs submodule sources
+      - name: Install .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
       - name: Build
         working-directory: PersonaSwapper
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           set +e
           ./"Build Release.command" 2>&1 | tee build.log
@@ -81,19 +87,97 @@ jobs:
               while IFS= read -r line; do echo "::error::${line}"; done
           fi
           exit "$status"
-
-      - name: Keep the builds as an artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: PersonaSwapper-${{ steps.version.outputs.version }}
+          name: builds-macos-windows
           path: PersonaSwapper/release/*.zip
 
+  linux:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            rid: linux-x64
+            tool: x86_64
+          - runner: ubuntu-24.04-arm
+            rid: linux-arm64
+            tool: aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Check out Persona Swapper
+        uses: actions/checkout@v4
+        with:
+          path: PersonaSwapper
+      - name: Check out the GFD-Studio macOS port (provides GFDLibrary)
+        uses: actions/checkout@v4
+        with:
+          repository: RaihoHeeHo/GFD-Studio
+          ref: macos-port
+          path: GFD-Studio-macOS
+          submodules: recursive
+      - name: Install .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Get appimagetool
+        run: |
+          curl -fsSL -o appimagetool "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${{ matrix.tool }}.AppImage"
+          chmod +x appimagetool
+          echo "APPIMAGETOOL=$PWD/appimagetool" >> "$GITHUB_ENV"
+          echo "APPIMAGE_EXTRACT_AND_RUN=1" >> "$GITHUB_ENV" # no FUSE on the runner
+      - name: Build
+        working-directory: PersonaSwapper
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set +e
+          ./build-linux.sh ${{ matrix.rid }} 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            grep -E ' error |error:|Error:|failed|No such file' build.log | grep -v NU1701 | sort -u | head -30 |
+              while IFS= read -r line; do echo "::error::${line}"; done
+          fi
+          exit "$status"
+      - name: Smoke test (start the app on a virtual display)
+        working-directory: PersonaSwapper/release
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libice6 libsm6 libfontconfig1 >/dev/null
+          mkdir smoke && tar -xzf PersonaSwapper-*-Linux-*.tar.gz -C smoke
+          set +e
+          timeout 25 xvfb-run -a smoke/PersonaSwapper/PersonaSwapper
+          status=$?
+          set -e
+          log=$(ls ~/.config/PersonaSwapper/logs/persona-swapper.log 2>/dev/null || true)
+          if [ -n "$log" ]; then grep -E 'CRASH|ERROR' "$log" | head -20 | while IFS= read -r l; do echo "::warning::$l"; done; fi
+          # 124 = still running when the timeout stopped it, i.e. it started fine.
+          if [ "$status" -ne 124 ]; then echo "::error::Persona Swapper exited early with status $status"; exit 1; fi
+          if [ -n "$log" ] && grep -q CRASH "$log"; then echo "::error::Persona Swapper logged a crash on startup"; exit 1; fi
+          echo "Started and kept running on Linux (${{ matrix.rid }})."
+          rm -rf smoke
+      - uses: actions/upload-artifact@v4
+        with:
+          name: builds-${{ matrix.rid }}
+          path: |
+            PersonaSwapper/release/*.tar.gz
+            PersonaSwapper/release/*.AppImage
+
+  release:
+    needs: [version, macos-windows, linux]
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: builds-*
+          merge-multiple: true
+          path: release
       - name: Publish release
-        if: steps.version.outputs.publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
+          tag_name: ${{ needs.version.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: Persona Swapper ${{ steps.version.outputs.version }}
-          files: PersonaSwapper/release/*.zip
+          name: Persona Swapper ${{ needs.version.outputs.version }}
+          files: release/*
           generate_release_notes: true

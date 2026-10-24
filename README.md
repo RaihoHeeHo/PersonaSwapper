@@ -1,6 +1,6 @@
 # Persona Swapper
 
-A native macOS (and Windows/Linux) tool for Persona 5 Royal that turns any model in the game into a persona:
+A tool for macOS, Windows and Linux for Persona 5 Royal that turns any model in the game into a persona:
 
 1. **Source model** — any GMD in `BASE.CPK`: Shadows and bosses, other personas, party members, NPCs.
 2. **Destination persona** — the persona whose slot the model takes over.
@@ -33,6 +33,10 @@ Double-click **Build Release.command** to build apps that run without .NET insta
 | `macOS-Apple-Silicon/Persona Swapper.app` | M1–M4 Macs |
 | `macOS-Intel/Persona Swapper.app` | Intel Macs |
 | `Windows/PersonaSwapper.exe` | 64-bit Windows (single file) |
+
+On Linux, run `./build-linux.sh` (x64 or arm64, matching the machine) for a `.tar.gz` and, if `appimagetool` is installed,
+an AppImage. Releases include both for x64 and arm64. From the `.tar.gz`, run `PersonaSwapper` directly or
+`install-desktop-entry.sh` to add it to your applications menu.
 
 plus a `.zip` of each for sharing. The Mac apps are signed ad hoc and not notarized: they open normally on the Mac
 that built them, but on another Mac the first launch needs right-click → Open (or System Settings → Privacy & Security

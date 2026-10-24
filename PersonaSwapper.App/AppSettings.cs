@@ -51,6 +51,8 @@ namespace PersonaSwapper.App
             {
                 Path.Combine( home, "Library", "Application Support", "Steam", "steamapps", "common", "P5R" ),
                 Path.Combine( home, ".local", "share", "Steam", "steamapps", "common", "P5R" ),
+                Path.Combine( home, ".steam", "steam", "steamapps", "common", "P5R" ),
+                Path.Combine( home, ".var", "app", "com.valvesoftware.Steam", ".local", "share", "Steam", "steamapps", "common", "P5R" ), // Flatpak Steam
                 @"C:\Program Files (x86)\Steam\steamapps\common\P5R",
             };
             foreach ( var candidate in candidates )
