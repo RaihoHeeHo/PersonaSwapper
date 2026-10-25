@@ -95,6 +95,12 @@ instead of replacing a persona. Of the 464 persona IDs, 302 have models; 101 of 
 Exporting to a free slot writes a new `PERSONA/<id>/` folder (model, battle and menu packs, built from Pixie's pack
 layout), clears *Not registerable*, gives the slot a level, name and 100% scale, and saves its stats, skills, lore etc.
 
+**Custom Bonus Tweaks Installed** (checkbox in the top bar, remembered): for players using the Custom Bonus Tweaks mod,
+which makes the game load `PSZ<id>.GMD` instead of the enemy model in menus. In this mode no export writes or replaces
+an enemy model (`EM`/`BEM`), only the persona files and `PSZ`, and 16 more slots become available: persona IDs 221–238
+that have no persona model but share their number with a boss model (unused story copies of the party's personas;
+untested, their story/party flags are cleared when used).
+
 **Recruit from a Shadow** (works for any persona) points one Shadow's negotiation at this persona in `UNIT.TBL`.
 The Shadow keeps its own look.
 

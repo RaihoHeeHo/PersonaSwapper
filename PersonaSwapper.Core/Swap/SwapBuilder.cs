@@ -69,7 +69,7 @@ namespace PersonaSwapper.Core.Swap
                 var reference = VelvetReference( project, placement );
                 placement.Copy( reference, dest.Id );
                 var typical = placement.TypicalPersona();
-                foreach ( var slot in game.Catalog.FreeSlots )
+                foreach ( var slot in game.Catalog.FreeSlots.Where( f => !f.HasEnemyFolder ) )
                     if ( placement.IsEmpty( slot.Id ) )
                         placement.Copy( typical, slot.Id );
                 result.Files[VelvetPlacement.Path] = placement.Serialize();
@@ -82,7 +82,7 @@ namespace PersonaSwapper.Core.Swap
             if ( !exist.PersonaExists( dest.Id ) )
             {
                 exist.AddPersona( dest.Id );
-                foreach ( var slot in game.Catalog.FreeSlots )
+                foreach ( var slot in game.Catalog.FreeSlots.Where( f => !f.HasEnemyFolder ) )
                     exist.AddPersona( slot.Id );
                 result.Files[Tables.ExistTable.Path] = exist.Serialize();
             }
@@ -94,7 +94,7 @@ namespace PersonaSwapper.Core.Swap
             if ( shading.NeedsFix( dest.Id ) )
             {
                 shading.Fix( dest.Id );
-                foreach ( var slot in game.Catalog.FreeSlots )
+                foreach ( var slot in game.Catalog.FreeSlots.Where( f => !f.HasEnemyFolder ) )
                     if ( shading.NeedsFix( slot.Id ) )
                         shading.Fix( slot.Id );
                 result.Files[PersonaShading.Path] = shading.Serialize();
@@ -102,7 +102,9 @@ namespace PersonaSwapper.Core.Swap
 
             // A new persona needs ENEMY/<id>/EM<id>.GMD: the menus, compendium and fusion screen load the model from there
             // (free slots are only offered when the game has no ENEMY/<id> folder, so no real Shadow is affected).
-            if ( dest.IsFreeSlot )
+            if ( dest.IsFreeSlot && dest.HasEnemyFolder && !project.CustomBonusTweaks )
+                throw new InvalidOperationException( $"Slot {dest.Id} has a Shadow model folder (ENEMY/{dest.Id:D4}); it can only be used with Custom Bonus Tweaks installed." );
+            if ( dest.IsFreeSlot && !project.CustomBonusTweaks )
             {
                 result.Files[SwapProject.EnemyModelPath( dest.Id )] = sourceBytes;
                 var ownBem = project.SourceModel.Category == Game.ModelCategory.Enemy
@@ -113,7 +115,7 @@ namespace PersonaSwapper.Core.Swap
             }
 
             // The persona menu and compendium show the Shadow model (EM), which is also the Shadow's battle model.
-            if ( project.ReplaceMenuModel && project.MenuModelPath != null &&
+            if ( !project.CustomBonusTweaks && project.ReplaceMenuModel && project.MenuModelPath != null &&
                  !string.Equals( project.MenuModelPath, project.SourceModel.Path, StringComparison.OrdinalIgnoreCase ) )
             {
                 result.Files[project.MenuModelPath] = sourceBytes;

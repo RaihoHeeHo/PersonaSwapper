@@ -23,6 +23,7 @@ namespace PersonaSwapper.App.ViewModels
             mSettings = settings;
             _gameFolder = settings.GameFolder;
             _modsFolder = string.IsNullOrWhiteSpace( settings.ModsFolder ) ? AppSettings.DefaultModsFolder( settings.GameFolder ) : settings.ModsFolder;
+            _customBonusTweaks = settings.CustomBonusTweaks;
             _author = settings.Author;
         }
 
@@ -68,6 +69,22 @@ namespace PersonaSwapper.App.ViewModels
         [ObservableProperty] private bool _showFreeSlots;
 
         partial void OnShowFreeSlotsChanged( bool value ) => RefreshDestinations();
+
+        /// <summary>
+        /// The Custom Bonus Tweaks mod is installed: menus load PSZ instead of enemy models, so free slots that have an
+        /// enemy model folder become usable, and exports never write or replace enemy models.
+        /// </summary>
+        [ObservableProperty] private bool _customBonusTweaks;
+
+        partial void OnCustomBonusTweaksChanged( bool value )
+        {
+            mSettings.CustomBonusTweaks = value;
+            SaveSettings();
+            RefreshDestinations();
+            if ( SelectedDestination is { IsFreeSlot: true, HasEnemyFolder: true } && !value )
+                SelectedDestination = null;
+            Editor?.SetCustomBonusTweaks( value );
+        }
 
         partial void OnSelectedSourceChanged( ModelEntry? value )
         {
@@ -208,7 +225,8 @@ namespace PersonaSwapper.App.ViewModels
                 return;
 
             var terms = DestinationSearch.Split( ' ', StringSplitOptions.RemoveEmptyEntries );
-            var list = ShowFreeSlots ? Game.Catalog.FreeSlots.Concat( Game.Catalog.Personas ) : Game.Catalog.Personas;
+            var free = Game.Catalog.FreeSlots.Where( f => CustomBonusTweaks || !f.HasEnemyFolder );
+            var list = ShowFreeSlots ? free.Concat( Game.Catalog.Personas ) : Game.Catalog.Personas;
             foreach ( var persona in list )
                 if ( terms.All( t => persona.ToString().Contains( t, StringComparison.OrdinalIgnoreCase ) ) )
                     Destinations.Add( persona );
@@ -235,7 +253,8 @@ namespace PersonaSwapper.App.ViewModels
             try
             {
                 // Building the editor parses the animation packs for every slot; keep that off the UI thread.
-                var editor = await Task.Run( () => new SwapEditorViewModel( new SwapProject( game, source, destination ), lookups, Preview ) );
+                var cbt = CustomBonusTweaks;
+                var editor = await Task.Run( () => new SwapEditorViewModel( new SwapProject( game, source, destination ) { CustomBonusTweaks = cbt }, lookups, Preview ) );
                 if ( generation != mEditorGeneration )
                     return; // selection changed while we were loading
 
@@ -261,6 +280,7 @@ namespace PersonaSwapper.App.ViewModels
             mSettings.GameFolder = GameFolder;
             mSettings.ModsFolder = ModsFolder;
             mSettings.Author = Author;
+            mSettings.CustomBonusTweaks = CustomBonusTweaks;
             mSettings.Save();
         }
 

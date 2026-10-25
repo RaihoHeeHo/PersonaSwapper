@@ -289,7 +289,7 @@ namespace PersonaSwapper.Cli
                 case "freeslots":
                     foreach ( var f in game.Catalog.FreeSlots )
                         Console.WriteLine( $"{f.Id,4}  arcana {game.Personas.Stats[f.Id].Arcana,2} level {game.Personas.Stats[f.Id].Level,2}  lore {( new PersonaLore( MessageScript.Parse( game.Archive.Read( PersonaLore.BmdPath ) ) ).Has( f.Id ) ? "yes" : "no" )}  template {f.Template?.Id}" );
-                    Console.WriteLine( $"{game.Catalog.FreeSlots.Count} free slots" );
+                    Console.WriteLine( $"{game.Catalog.FreeSlots.Count} free slots, {game.Catalog.FreeSlots.Count( f => f.HasEnemyFolder )} of them need Custom Bonus Tweaks: {string.Join( " ", game.Catalog.FreeSlots.Where( f => f.HasEnemyFolder ).Select( f => f.Id ) )}" );
                     foreach ( var f in game.Catalog.FreeSlots )
                     {
                         var refs = game.Units.EnemyVisuals.Select( ( v, i ) => (v, i) ).Where( x => x.v.PersonaId == f.Id ).Select( x => $"{x.i}:{game.Names.Get( NameTable.Enemies, x.i )}" ).ToList();
@@ -512,6 +512,28 @@ namespace PersonaSwapper.Cli
                     var orig = game.Archive.Read( ExistTable.Path );
                     var t = ExistTable.Parse( orig );
                     Console.WriteLine( $"round-trip identical: {t.Serialize().AsSpan().SequenceEqual( orig )}; {t.Personas.Count} personas" );
+                    return 0;
+                }
+
+                case "cbtslots":
+                {
+                    // Persona slots with no persona model whose ENEMY/<id>/EM<id>.GMD exists (any name), and who recruits them.
+                    var anyName = args.Length > 2 && args[2] == "all";
+                    var withFolder = game.Catalog.Personas.Select( p => p.Id ).ToHashSet();
+                    for ( var id = 1; id < game.Personas.Stats.Count; id++ )
+                    {
+                        var name = game.Names.Get( NameTable.Personas, id )?.Trim() ?? "";
+                        var placeholder = name.Equals( "RESERVE", StringComparison.OrdinalIgnoreCase ) || name.EndsWith( " Unused", StringComparison.OrdinalIgnoreCase );
+                        var flags = game.Personas.Stats[id].Flags;
+                        var enemyFolder = game.Archive.Contains( SwapProject.EnemyModelPath( id ) );
+                        if ( anyName ) { if ( withFolder.Contains( id ) || !enemyFolder ) continue; }
+                        else if ( !placeholder || withFolder.Contains( id ) || flags.HasFlag( PersonaFlags.PartyPersona ) || flags.HasFlag( PersonaFlags.StoryPersona ) ) continue;
+                        var recruiters = game.Units.EnemyVisuals.Select( ( v, i ) => (v, i) ).Where( x => x.v.PersonaId == id )
+                            .Select( x => $"{x.i}:{game.Names.Get( NameTable.Enemies, x.i )}(model {x.v.ModelId})" ).ToList();
+                        var enemyName = id < game.Units.EnemyVisuals.Count ? game.Names.Get( NameTable.Enemies, id ) : "";
+                        if ( anyName || enemyFolder || recruiters.Any( r => !r.Contains( ":RESERVE" ) && !r.Contains( ":Not Used" ) ) )
+                            Console.WriteLine( $"{id,4} '{name}' flags {flags}  EM{id:D4} {( enemyFolder ? "exists" : "-" )}  enemy {id} = '{enemyName}'  recruited by {string.Join( ", ", recruiters )}" );
+                    }
                     return 0;
                 }
 
@@ -1030,7 +1052,8 @@ namespace PersonaSwapper.Cli
             var source = game.Catalog.Models.FirstOrDefault( m => m.Path.Equals( sourcePath, StringComparison.OrdinalIgnoreCase ) )
                          ?? throw new ArgumentException( $"No model {sourcePath}" );
             var dest = game.Catalog.Personas.FirstOrDefault( p => p.Id == personaId ) ?? game.Catalog.FreeSlots.First( p => p.Id == personaId );
-            var project = new SwapProject( game, source, dest );
+            var project = new SwapProject( game, source, dest ) { CustomBonusTweaks = Environment.GetEnvironmentVariable( "PSWAP_CBT" ) == "1" };
+            if ( project.CustomBonusTweaks ) Console.WriteLine( "Custom Bonus Tweaks mode" );
             if ( dest.IsFreeSlot )
                 Console.WriteLine( $"New persona in free slot {dest.Id}: name '{project.PersonaName}', flags {project.Stats.Flags}, level {project.Stats.Level}, " +
                                    $"arcana {project.Stats.Arcana}, menu model {project.MenuModelPath ?? "(none: persona model)"}" );

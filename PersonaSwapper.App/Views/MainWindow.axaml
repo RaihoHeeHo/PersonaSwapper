@@ -29,6 +29,8 @@
             <TextBlock Text="SWAPPER" FontSize="16" FontWeight="Black" FontStyle="Italic" Foreground="{StaticResource P5WhiteBrush}" />
           </Border>
         </StackPanel>
+      <CheckBox DockPanel.Dock="Right" Margin="16,0,0,0" Content="Custom Bonus Tweaks Installed" IsChecked="{Binding CustomBonusTweaks}"
+                ToolTip.Tip="Tick if you use the Custom Bonus Tweaks mod (it makes menus load PSZ instead of enemy models). Unlocks more free slots; exports never replace enemy models." />
       <Grid ColumnDefinitions="Auto,*,Auto,Auto,24,Auto,*,Auto" RowDefinitions="Auto">
         <TextBlock Grid.Column="0" Text="Game folder" Classes="fieldLabel" />
         <TextBox Grid.Column="1" Text="{Binding GameFolder}" Watermark="…/steamapps/common/P5R" />

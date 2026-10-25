@@ -117,6 +117,8 @@ namespace PersonaSwapper.Core.Swap
         private void EnableFreeSlot()
         {
             Stats.Flags &= ~PersonaFlags.NotRegisterable;
+            if ( Destination.WasStoryCopy )
+                Stats.Flags &= ~( PersonaFlags.StoryPersona | PersonaFlags.PartyPersona ); // make it an ordinary persona
             if ( Stats.Level == 0 ) Stats.Level = 1;
             ModelScale = 100; // placeholders carry leftover scales (some 60%); start from the model's own size
             // Placeholders' inheritance values aren't real types; borrow the template persona's.
@@ -161,6 +163,12 @@ namespace PersonaSwapper.Core.Swap
         /// Shadow's battle model too, so the Shadow changes in battle as well.
         /// </summary>
         public bool ReplaceMenuModel { get; set; } = true;
+
+        /// <summary>
+        /// The Custom Bonus Tweaks mod is installed: it makes the game load PSZ&lt;id&gt;.GMD instead of the enemy model in
+        /// menus. Exports then never write or replace enemy models (EM/BEM); only the persona files and PSZ.
+        /// </summary>
+        public bool CustomBonusTweaks { get; set; }
 
         public GameData Game { get; }
 

@@ -43,13 +43,28 @@ namespace PersonaSwapper.Core.Game
         /// </summary>
         public bool IsFreeSlot { get; init; }
 
+        /// <summary>
+        /// For a free slot: the game has an ENEMY/&lt;id&gt; folder (a Shadow model with this number). Such slots are only
+        /// usable with Custom Bonus Tweaks, which makes the menus load PSZ instead of the enemy model.
+        /// </summary>
+        public bool HasEnemyFolder { get; init; }
+
+        /// <summary>For a Custom Bonus Tweaks slot: it was an unused story/party copy of a party persona (untested).</summary>
+        public bool WasStoryCopy { get; init; }
+
+        /// <summary>The slot's name in the game's tables (e.g. "RESERVE", "Captain Kidd").</summary>
+        public string OriginalName { get; init; } = "";
+
         /// <summary>For a free slot: the existing persona whose packs serve as the starting point (slot layout, flags).</summary>
         public PersonaEntry? Template { get; init; }
 
         /// <summary>Battle model to read from the game: the persona's own, or the template's for a free slot.</summary>
         public string ExistingBattleModelPath => Template?.BattleModelPath ?? BattleModelPath;
 
-        public override string ToString() => IsFreeSlot ? $"{Id:D4}  + new persona (free slot)" : $"{Id:D4}  {Name}";
+        public override string ToString() => IsFreeSlot
+            ? WasStoryCopy ? $"{Id:D4}  + new persona (unused story copy of {OriginalName}; Custom Bonus Tweaks, untested)"
+              : HasEnemyFolder ? $"{Id:D4}  + new persona (free slot, needs Custom Bonus Tweaks)" : $"{Id:D4}  + new persona (free slot)"
+            : $"{Id:D4}  {Name}";
     }
 
     /// <summary>Index of every model in the game with readable names.</summary>
@@ -87,7 +102,10 @@ namespace PersonaSwapper.Core.Game
 
         public IReadOnlyList<PersonaEntry> Personas { get; private set; } = Array.Empty<PersonaEntry>();
 
-        /// <summary>Unused persona slots that are safe to turn into new personas (see <see cref="FindFreeSlots"/>).</summary>
+        /// <summary>
+        /// Unused persona slots that can become new personas (see <see cref="FindFreeSlots"/>). Those with
+        /// <see cref="PersonaEntry.HasEnemyFolder"/> are only usable with Custom Bonus Tweaks.
+        /// </summary>
         public IReadOnlyList<PersonaEntry> FreeSlots { get; private set; } = Array.Empty<PersonaEntry>();
 
         /// <summary>Persona whose packs a new persona starts from when the source isn't a persona itself.</summary>
@@ -125,7 +143,7 @@ namespace PersonaSwapper.Core.Game
                 var name = names.Get( NameTable.Personas, id )?.Trim() ?? "";
                 var placeholder = name.Equals( "RESERVE", StringComparison.OrdinalIgnoreCase ) || name.EndsWith( " Unused", StringComparison.OrdinalIgnoreCase );
                 var flags = personas.Stats[id].Flags;
-                if ( !placeholder || withFolder.Contains( id ) || recruited.Contains( id ) || enemyFolders.Contains( id ) ||
+                if ( !placeholder || withFolder.Contains( id ) || recruited.Contains( id ) ||
                      flags.HasFlag( PersonaFlags.PartyPersona ) || flags.HasFlag( PersonaFlags.StoryPersona ) )
                     continue;
                 var folder = $"MODEL/CHARACTER/PERSONA/{id:D4}";
@@ -133,9 +151,26 @@ namespace PersonaSwapper.Core.Game
                 {
                     IsFreeSlot = true,
                     Template = template,
+                    HasEnemyFolder = enemyFolders.Contains( id ),
                 } );
             }
-            FreeSlots = slots;
+            // With Custom Bonus Tweaks the menus load PSZ, so persona IDs that have no persona model but whose number has
+            // a Shadow/boss model (the unused story copies of the party's personas, 221-238) can be used too.
+            foreach ( var id in enemyFolders.Where( id => id > 0 && id < personas.Stats.Count && !withFolder.Contains( id ) &&
+                                                          slots.All( s => s.Id != id ) &&
+                                                          archive.Contains( $"MODEL/CHARACTER/ENEMY/{id:D4}/EM{id:D4}.GMD" ) ).OrderBy( x => x ) )
+            {
+                var folder = $"MODEL/CHARACTER/PERSONA/{id:D4}";
+                slots.Add( new PersonaEntry( id, "New persona", folder, $"{folder}/PS{id:D4}.GMD", $"{folder}/BPS{id:D4}_000.GAP" )
+                {
+                    IsFreeSlot = true,
+                    Template = template,
+                    HasEnemyFolder = true,
+                    WasStoryCopy = personas.Stats[id].Flags.HasFlag( PersonaFlags.StoryPersona ) || personas.Stats[id].Flags.HasFlag( PersonaFlags.PartyPersona ),
+                    OriginalName = names.Get( NameTable.Personas, id )?.Trim() ?? "",
+                } );
+            }
+            FreeSlots = slots.OrderBy( x => x.Id ).ToList();
         }
 
         public static ModelCatalog Build( GameArchive archive, NameTable? names, UnitTable? units )

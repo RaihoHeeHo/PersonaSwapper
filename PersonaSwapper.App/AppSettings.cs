@@ -13,6 +13,9 @@ namespace PersonaSwapper.App
 
         public string Author { get; set; } = Environment.UserName;
 
+        /// <summary>The Custom Bonus Tweaks mod is installed (menus load PSZ; exports never touch enemy models).</summary>
+        public bool CustomBonusTweaks { get; set; }
+
         private static string SettingsPath
             => Path.Combine( Environment.GetFolderPath( Environment.SpecialFolder.ApplicationData ), "PersonaSwapper", "settings.json" );
 

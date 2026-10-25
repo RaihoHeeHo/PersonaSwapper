@@ -73,7 +73,9 @@ namespace PersonaSwapper.App.ViewModels
 
         public bool IsNewPersona => Project.Destination.IsFreeSlot;
 
-        public string NewPersonaHint => $"This adds a new persona in unused slot {Project.Destination.Id} (a placeholder the game ships with). " +
+        public string NewPersonaHint => ( Project.Destination.WasStoryCopy
+                                              ? $"This adds a new persona in slot {Project.Destination.Id}, an unused story copy of {Project.Destination.OriginalName} with no model (needs Custom Bonus Tweaks; untested: the story might use this ID). "
+                                              : $"This adds a new persona in unused slot {Project.Destination.Id} (a placeholder the game ships with). " ) +
                                         "Set its arcana and level: normal fusion may produce it like any other persona of that arcana " +
                                         "(not yet confirmed in game). To be sure you can get it, pick a Shadow below to recruit it from.";
 
@@ -172,7 +174,14 @@ namespace PersonaSwapper.App.ViewModels
 
         public string ScaleHint { get; }
 
-        public bool HasMenuModel => Project.MenuModelPath != null;
+        public bool HasMenuModel => Project.MenuModelPath != null && !Project.CustomBonusTweaks;
+
+        public void SetCustomBonusTweaks( bool value )
+        {
+            Project.CustomBonusTweaks = value;
+            OnPropertyChanged( nameof( HasMenuModel ) );
+            OnPropertyChanged( nameof( MenuModelHint ) );
+        }
 
         public bool ReplaceMenuModel
         {
@@ -185,7 +194,9 @@ namespace PersonaSwapper.App.ViewModels
 
         private string PersonaLabel => Project.Destination.IsFreeSlot ? Project.PersonaName : Project.Destination.Name;
 
-        public string MenuModelHint => Project.Destination.IsFreeSlot
+        public string MenuModelHint => Project.CustomBonusTweaks
+            ? $"Custom Bonus Tweaks mode: menus, the compendium and fusion load PSZ{Project.Destination.Id:D4}.GMD, which the export writes. Enemy models are never replaced."
+            : Project.Destination.IsFreeSlot
             ? $"Menus, the compendium and fusion load ENEMY/{Project.Destination.Id:D4}/EM{Project.Destination.Id:D4}.GMD; the export writes the new model there (no Shadow uses that folder)."
             : Project.MenuModelPath == null
             ? $"{PersonaLabel} has no Shadow model (ENEMY/{Project.Destination.Id:D4}/EM{Project.Destination.Id:D4}.GMD)."
