@@ -85,6 +85,22 @@ Findings this is based on (checked against the game files):
 - Preview materials follow the game's settings: P5R stores other data in the diffuse alpha of most opaque materials
   (310 of 351 sampled), so alpha is only used for alpha-tested, transparent or additive materials.
 
+## New personas (free slots)
+
+Tick **Free slots: add as a new persona** above the destination list to pick one of the game's unused persona slots
+instead of replacing a persona. Of the 464 persona IDs, 302 have models; 101 of the rest are safe placeholders
+("RESERVE", "P5 Unused") that no real Shadow recruits and that aren't party or story personas. Their table rows
+(stats, skills, lore, scale) already exist but are flagged *Not registerable*.
+
+Exporting to a free slot writes a new `PERSONA/<id>/` folder (model, battle and menu packs, built from Pixie's pack
+layout), clears *Not registerable*, gives the slot a level, name and 100% scale, and saves its stats, skills, lore etc.
+
+**Recruit from a Shadow** (works for any persona) points one Shadow's negotiation at this persona in `UNIT.TBL`.
+That Shadow then counts as the persona's Shadow, so with the menu-model option on it also turns into the new model.
+
+Still to confirm in game: whether normal fusion and the compendium list a new persona automatically (by arcana and
+level), and which model the menus show for a persona without a Shadow.
+
 ## Projects
 
 - `PersonaSwapper.Core` — CPK reading (CriFsV2Lib), table parsers, model catalog, swap builder, mod writer, pose/skinning.

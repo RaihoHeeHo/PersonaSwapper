@@ -53,7 +53,8 @@ namespace PersonaSwapper.Cli
                     return 0;
 
                 case "swap":
-                    return Swap( game, args[2], int.Parse( args[3] ), args[4] );
+                    // swap <model> <personaId or free-slot id> <modsFolder> [recruitEnemyId]
+                    return Swap( game, args[2], int.Parse( args[3] ), args[4], args.Length > 5 ? int.Parse( args[5] ) : 0 );
 
                 case "render":
                     // render <model.GMD> <pack.GAP|-> <animIndex> <outPrefix> [times...]
@@ -260,6 +261,41 @@ namespace PersonaSwapper.Cli
                     }
                     return 0;
                 }
+
+                case "reserve":
+                {
+                    // Persona IDs without a model folder: names, arcana/level, flags, skills, and whether anything references them.
+                    var withFolder = game.Catalog.Personas.Select( p => p.Id ).ToHashSet();
+                    var visual = VisualTable.Parse( game.Archive.Read( GameData.VisualTablePath ) );
+                    var recruited = game.Units.EnemyVisuals.Where( v => v.PersonaId > 0 ).Select( v => (int)v.PersonaId ).ToHashSet();
+                    var groups = new Dictionary<string, List<int>>();
+                    for ( var id = 0; id < game.Personas.Stats.Count; id++ )
+                    {
+                        if ( withFolder.Contains( id ) ) continue;
+                        var st = game.Personas.Stats[id];
+                        var sk = game.Personas.Skills[id];
+                        var name = game.Names.Get( NameTable.Personas, id );
+                        var skills = Enumerable.Range( 0, PersonaSkillsEntry.SkillSlotCount ).Count( i => sk.GetSlot( i ).Id != 0 );
+                        var key = $"name '{name}' lv{( st.Level == 0 ? "0" : ">0" )} skills{( skills == 0 ? "0" : ">0" )} flags {st.Flags} scale {visual.Personas[id].BattleModelScale}";
+                        if ( !groups.TryGetValue( key, out var list ) ) groups[key] = list = new();
+                        list.Add( id );
+                    }
+                    Console.WriteLine( $"{game.Personas.Stats.Count} persona entries, {withFolder.Count} with model folders, {game.Personas.Stats.Count - withFolder.Count} without" );
+                    foreach ( var (k, v) in groups.OrderByDescending( g => g.Value.Count ) )
+                        Console.WriteLine( $"  {v.Count,3} x {k}: {string.Join( ",", v.Take( 14 ) )}{( v.Count > 14 ? ",…" : "" )}" + ( v.Any( recruited.Contains ) ? "  (some recruited from Shadows!)" : "" ) );
+                    return 0;
+                }
+
+                case "freeslots":
+                    foreach ( var f in game.Catalog.FreeSlots )
+                        Console.WriteLine( $"{f.Id,4}  arcana {game.Personas.Stats[f.Id].Arcana,2} level {game.Personas.Stats[f.Id].Level,2}  lore {( new PersonaLore( MessageScript.Parse( game.Archive.Read( PersonaLore.BmdPath ) ) ).Has( f.Id ) ? "yes" : "no" )}  template {f.Template?.Id}" );
+                    Console.WriteLine( $"{game.Catalog.FreeSlots.Count} free slots" );
+                    foreach ( var f in game.Catalog.FreeSlots )
+                    {
+                        var refs = game.Units.EnemyVisuals.Select( ( v, i ) => (v, i) ).Where( x => x.v.PersonaId == f.Id ).Select( x => $"{x.i}:{game.Names.Get( NameTable.Enemies, x.i )}" ).ToList();
+                        if ( refs.Count > 0 ) Console.WriteLine( $"  {f.Id} referenced by placeholder enemies {string.Join( ", ", refs.Take( 4 ) )}" );
+                    }
+                    return 0;
 
                 case "zcompare":
                     ZCompare( game, args.Skip( 2 ).Select( int.Parse ).ToArray() );
@@ -771,17 +807,25 @@ namespace PersonaSwapper.Cli
                 Console.WriteLine( $"  {k}: {v.Count} materials, {v.LowAlphaTextures} with >5% low-alpha texels" );
         }
 
-        private static int Swap( GameData game, string sourcePath, int personaId, string modsFolder )
+        private static int Swap( GameData game, string sourcePath, int personaId, string modsFolder, int recruitEnemy = 0 )
         {
             var source = game.Catalog.Models.FirstOrDefault( m => m.Path.Equals( sourcePath, StringComparison.OrdinalIgnoreCase ) )
                          ?? throw new ArgumentException( $"No model {sourcePath}" );
-            var dest = game.Catalog.Personas.First( p => p.Id == personaId );
+            var dest = game.Catalog.Personas.FirstOrDefault( p => p.Id == personaId ) ?? game.Catalog.FreeSlots.First( p => p.Id == personaId );
             var project = new SwapProject( game, source, dest );
+            if ( dest.IsFreeSlot )
+                Console.WriteLine( $"New persona in free slot {dest.Id}: name '{project.PersonaName}', flags {project.Stats.Flags}, level {project.Stats.Level}, " +
+                                   $"arcana {project.Stats.Arcana}, menu model {project.MenuModelPath ?? "(none: persona model)"}" );
+            if ( recruitEnemy > 0 )
+            {
+                project.RecruitFromEnemy = recruitEnemy;
+                Console.WriteLine( $"Recruit from enemy {recruitEnemy} ({game.Names.Get( NameTable.Enemies, recruitEnemy )}), was persona {project.RecruitOriginalPersona}; menu model now {project.MenuModelPath}" );
+            }
             Console.WriteLine( $"Swap {source.DisplayName} -> {dest}" );
             foreach ( var slot in project.Slots )
                 Console.WriteLine( $"  {slot.Pack,-9} slot {slot.Slot,2}: {( slot.Empty ? "(empty)" : $"{System.IO.Path.GetFileName( slot.SourcePackPath )} #{slot.SourceIndex}{( slot.Retarget ? " retarget" : "" )}" )}" );
 
-            project.PersonaName = "Test Swap";
+            if ( !dest.IsFreeSlot ) project.PersonaName = "Test Swap";
             project.Stats.Level = 5;
             var heights = project.ModelHeights();
             var suggested = project.SuggestMatchingScale();
@@ -809,7 +853,9 @@ namespace PersonaSwapper.Cli
             }
             var names = NameTable.Parse( build.Files[GameData.NameTablePath] );
             var personas = PersonaTable.Parse( build.Files[GameData.PersonaTablePath] );
-            Console.WriteLine( $"  name now '{names.Get( NameTable.Personas, personaId )}', level {personas.Stats[personaId].Level}" );
+            Console.WriteLine( $"  name now '{names.Get( NameTable.Personas, personaId )}', level {personas.Stats[personaId].Level}, flags {personas.Stats[personaId].Flags}" );
+            if ( build.Files.TryGetValue( GameData.UnitTablePath, out var unitBytes ) && recruitEnemy > 0 )
+                Console.WriteLine( $"  UNIT.TBL: enemy {recruitEnemy} now gives persona {UnitTable.Parse( unitBytes ).EnemyVisuals[recruitEnemy].PersonaId}" );
             Console.WriteLine( $"  scale now {VisualTable.Parse( build.Files[GameData.VisualTablePath] ).Personas[personaId].BattleModelScale}%" );
             var outLore = new PersonaLore( MessageScript.Parse( build.Files[PersonaLore.BmdPath] ) );
             var pakLore = new PersonaLore( MessageScript.Parse( PakArchive.Parse( build.Files[PersonaLore.PakPath] ).Get( PersonaLore.PakEntryName )! ) );

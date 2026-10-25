@@ -111,7 +111,7 @@ namespace PersonaSwapper.Core.Tables
         public EnemyVisualIndexEntry( byte[] segment, int index ) : base( segment, index, UnitTable.VisualIndexSize ) { }
 
         /// <summary>Persona obtained when this Shadow is recruited.</summary>
-        public ushort PersonaId => U16( 0 );
+        public ushort PersonaId { get => U16( 0 ); set => U16( 0, value ); }
 
         /// <summary>The enemy model folder (MODEL/CHARACTER/ENEMY/&lt;id&gt;).</summary>
         public ushort ModelId => U16( 2 );

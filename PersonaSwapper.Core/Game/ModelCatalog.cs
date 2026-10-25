@@ -37,7 +37,19 @@ namespace PersonaSwapper.Core.Game
     {
         public string FolderPath => Folder;
 
-        public override string ToString() => $"{Id:D4}  {Name}";
+        /// <summary>
+        /// An unused persona slot ("RESERVE" / "P5 Unused") with no files: a swap onto it adds a new persona.
+        /// <see cref="BattleModelPath"/> and <see cref="BattleAnimationPath"/> are where its files will go.
+        /// </summary>
+        public bool IsFreeSlot { get; init; }
+
+        /// <summary>For a free slot: the existing persona whose packs serve as the starting point (slot layout, flags).</summary>
+        public PersonaEntry? Template { get; init; }
+
+        /// <summary>Battle model to read from the game: the persona's own, or the template's for a free slot.</summary>
+        public string ExistingBattleModelPath => Template?.BattleModelPath ?? BattleModelPath;
+
+        public override string ToString() => IsFreeSlot ? $"{Id:D4}  + new persona (free slot)" : $"{Id:D4}  {Name}";
     }
 
     /// <summary>Index of every model in the game with readable names.</summary>
@@ -74,6 +86,52 @@ namespace PersonaSwapper.Core.Game
         public IReadOnlyList<ModelEntry> Models { get; private set; } = Array.Empty<ModelEntry>();
 
         public IReadOnlyList<PersonaEntry> Personas { get; private set; } = Array.Empty<PersonaEntry>();
+
+        /// <summary>Unused persona slots that are safe to turn into new personas (see <see cref="FindFreeSlots"/>).</summary>
+        public IReadOnlyList<PersonaEntry> FreeSlots { get; private set; } = Array.Empty<PersonaEntry>();
+
+        /// <summary>Persona whose packs a new persona starts from when the source isn't a persona itself.</summary>
+        public const int DefaultTemplateId = 6; // Pixie: standard 11-slot battle pack and 3-slot GT pack
+
+        /// <summary>
+        /// Free slots: placeholder entries the game ships with ("RESERVE", "P5 Unused", "P6 Unused") that have no model
+        /// folder, no Shadow recruits them (UNIT.TBL), and aren't party or story personas. Their table rows already
+        /// exist (stats, skills, lore, scale) but are flagged NotRegisterable so they never appear.
+        /// </summary>
+        public void FindFreeSlots( PersonaTable personas, UnitTable units, NameTable names )
+        {
+            var withFolder = Personas.Select( p => p.Id ).ToHashSet();
+            // Persona IDs a real Shadow recruits. Placeholder enemy rows ("Not Used", "RESERVE", blank) also point at
+            // persona IDs, but no encounter uses them, so they don't make a slot unsafe.
+            var recruited = new HashSet<int>();
+            for ( var unit = 1; unit < units.EnemyVisuals.Count; unit++ )
+            {
+                var persona = units.EnemyVisuals[unit].PersonaId;
+                if ( persona == 0 ) continue;
+                var enemy = names.Get( NameTable.Enemies, unit )?.Trim() ?? "";
+                var deadEnemy = enemy.Length == 0 || enemy.Equals( "Not Used", StringComparison.OrdinalIgnoreCase ) ||
+                                enemy.StartsWith( "RESERVE", StringComparison.OrdinalIgnoreCase ) || enemy.Contains( "Unused", StringComparison.OrdinalIgnoreCase );
+                if ( !deadEnemy ) recruited.Add( persona );
+            }
+            var template = Personas.FirstOrDefault( p => p.Id == DefaultTemplateId ) ?? Personas.FirstOrDefault( p => p.BattleAnimationPath != null );
+            var slots = new List<PersonaEntry>();
+            for ( var id = 1; id < personas.Stats.Count; id++ )
+            {
+                var name = names.Get( NameTable.Personas, id )?.Trim() ?? "";
+                var placeholder = name.Equals( "RESERVE", StringComparison.OrdinalIgnoreCase ) || name.EndsWith( " Unused", StringComparison.OrdinalIgnoreCase );
+                var flags = personas.Stats[id].Flags;
+                if ( !placeholder || withFolder.Contains( id ) || recruited.Contains( id ) ||
+                     flags.HasFlag( PersonaFlags.PartyPersona ) || flags.HasFlag( PersonaFlags.StoryPersona ) )
+                    continue;
+                var folder = $"MODEL/CHARACTER/PERSONA/{id:D4}";
+                slots.Add( new PersonaEntry( id, "New persona", folder, $"{folder}/PS{id:D4}.GMD", $"{folder}/BPS{id:D4}_000.GAP" )
+                {
+                    IsFreeSlot = true,
+                    Template = template,
+                } );
+            }
+            FreeSlots = slots;
+        }
 
         public static ModelCatalog Build( GameArchive archive, NameTable? names, UnitTable? units )
         {

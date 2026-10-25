@@ -24,15 +24,26 @@ namespace PersonaSwapper.App.ViewModels
             mPreview = preview;
 
             _name = project.PersonaName;
-            _modId = $"p5rpc.personaswap.{Slug( project.Destination.Name )}";
-            _modName = $"Persona Swap: {project.SourceModel.DisplayName.Split( '—' )[0].Trim()} as {project.Destination.Name}";
+            if ( project.Destination.IsFreeSlot )
+            {
+                _modId = $"p5rpc.personaswap.new.{Slug( project.PersonaName )}";
+                _modName = $"New Persona: {project.PersonaName} (slot {project.Destination.Id})";
+            }
+            else
+            {
+                _modId = $"p5rpc.personaswap.{Slug( project.Destination.Name )}";
+                _modName = $"Persona Swap: {project.SourceModel.DisplayName.Split( '—' )[0].Trim()} as {project.Destination.Name}";
+            }
+            _selectedRecruit = lookups.RecruitableShadows[0];
 
             _originalLore = Unwrap( project.LoreText );
             _lore = _originalLore;
             var (sourceHeight, destinationHeight) = project.ModelHeights();
             SuggestedScale = project.SuggestMatchingScale();
             OriginalScale = project.OriginalModelScale;
-            ScaleHint = sourceHeight > 0 && destinationHeight > 0
+            ScaleHint = project.Destination.IsFreeSlot
+                ? $"New persona: 100% shows the model at its own size ({sourceHeight:0} units tall). Typical personas are 80–350 units tall."
+                : sourceHeight > 0 && destinationHeight > 0
                 ? $"Source model is {sourceHeight:0} units tall; {project.Destination.Name}'s original model is {destinationHeight:0} at {OriginalScale}%. " +
                   $"{SuggestedScale}% keeps the same on-screen size."
                 : "Couldn't measure the models.";
@@ -56,7 +67,34 @@ namespace PersonaSwapper.App.ViewModels
 
         public ObservableCollection<AnimationSlotViewModel> SlotRows { get; } = new();
 
-        public string Title => $"{Project.SourceModel.DisplayName}  →  #{Project.Destination.Id} {Project.Destination.Name}";
+        public string Title => Project.Destination.IsFreeSlot
+            ? $"{Project.SourceModel.DisplayName}  →  new persona #{Project.Destination.Id}"
+            : $"{Project.SourceModel.DisplayName}  →  #{Project.Destination.Id} {Project.Destination.Name}";
+
+        public bool IsNewPersona => Project.Destination.IsFreeSlot;
+
+        public string NewPersonaHint => $"This adds a new persona in unused slot {Project.Destination.Id} (a placeholder the game ships with). " +
+                                        "Set its arcana and level: normal fusion may produce it like any other persona of that arcana " +
+                                        "(not yet confirmed in game). To be sure you can get it, pick a Shadow below to recruit it from.";
+
+        public IReadOnlyList<IdName> RecruitOptions => Lookups.RecruitableShadows;
+
+        [ObservableProperty] private IdName _selectedRecruit;
+
+        partial void OnSelectedRecruitChanged( IdName value )
+        {
+            Project.RecruitFromEnemy = value?.Id ?? 0;
+            OnPropertyChanged( nameof( HasMenuModel ) );
+            OnPropertyChanged( nameof( MenuModelLabel ) );
+            OnPropertyChanged( nameof( MenuModelHint ) );
+            OnPropertyChanged( nameof( RecruitHint ) );
+        }
+
+        public string RecruitHint => Project.RecruitFromEnemy == 0
+            ? "Negotiating with the chosen Shadow gives this persona instead of its usual one."
+            : $"Negotiating with this Shadow now gives {Project.PersonaName} instead of " +
+              $"{Project.Game.Names.Get( Core.Tables.NameTable.Personas, Project.RecruitOriginalPersona )}. " +
+              "It also becomes this persona's Shadow, so the menus show that Shadow's model; keep the menu model option on to replace it.";
 
         // ---- Mod ----
 
@@ -146,9 +184,11 @@ namespace PersonaSwapper.App.ViewModels
         public string MenuModelLabel => Project.MenuModelPath == null ? "" :
             $"Also use it in the persona menu and compendium (replaces {System.IO.Path.GetFileName( Project.MenuModelPath )})";
 
+        private string PersonaLabel => Project.Destination.IsFreeSlot ? Project.PersonaName : Project.Destination.Name;
+
         public string MenuModelHint => Project.MenuModelPath == null
-            ? $"{Project.Destination.Name} has no Shadow model; menus and the compendium use its persona model, which is replaced."
-            : $"The game shows {Project.Destination.Name}'s Shadow model ({System.IO.Path.GetFileName( Project.MenuModelPath )}) in menus and the compendium. " +
+            ? $"{PersonaLabel} has no Shadow model, so menus and the compendium should use its persona model, which is replaced (expected; confirmed only for personas with a Shadow)."
+            : $"The game shows {PersonaLabel}'s Shadow model ({System.IO.Path.GetFileName( Project.MenuModelPath )}) in menus and the compendium. " +
               "That file is also the Shadow in battle, so the Shadow turns into the new model too" +
               ( Project.SourceModel.Category == PersonaSwapper.Core.Game.ModelCategory.Enemy ? " (with the source's own animations)." : ", playing its own animations." );
 

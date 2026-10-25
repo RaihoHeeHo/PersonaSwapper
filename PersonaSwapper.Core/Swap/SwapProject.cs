@@ -65,13 +65,75 @@ namespace PersonaSwapper.Core.Swap
             if ( game.Archive.Contains( PersonaLore.BmdPath ) )
                 Lore = new PersonaLore( MessageScript.Parse( game.Archive.Read( PersonaLore.BmdPath ) ) );
 
+            if ( destination.IsFreeSlot )
+                EnableFreeSlot();
+
             Slots = DefaultSlots( game, sourceModel, destination ).ToList();
-            MenuModelPath = FindMenuModel( game, Units, destination.Id, out var shadowId );
+            UpdateMenuModel();
+        }
+
+        private void UpdateMenuModel()
+        {
+            MenuModelPath = FindMenuModel( Game, Units, Destination.Id, out var shadowId );
+            ShadowAnimationPath = null;
             if ( MenuModelPath != null )
             {
                 ShadowAnimationPath = $"MODEL/CHARACTER/ENEMY/{shadowId:D4}/BEM{shadowId:D4}_000.GAP";
-                if ( !game.Archive.Contains( ShadowAnimationPath ) ) ShadowAnimationPath = null;
+                if ( !Game.Archive.Contains( ShadowAnimationPath ) ) ShadowAnimationPath = null;
             }
+        }
+
+        private int mRecruitEnemy;
+        private ushort mRecruitOriginalPersona;
+
+        /// <summary>
+        /// Enemy (unit) ID whose negotiation should give this persona instead of its usual one; 0 = none.
+        /// Written to UNIT.TBL segment 4. That Shadow then counts as this persona's Shadow, so the menus show its model
+        /// (see <see cref="MenuModelPath"/>).
+        /// </summary>
+        public int RecruitFromEnemy
+        {
+            get => mRecruitEnemy;
+            set
+            {
+                if ( value == mRecruitEnemy ) return;
+                if ( mRecruitEnemy > 0 ) Units.EnemyVisuals[mRecruitEnemy].PersonaId = mRecruitOriginalPersona;
+                mRecruitEnemy = value > 0 && value < Units.EnemyVisuals.Count ? value : 0;
+                if ( mRecruitEnemy > 0 )
+                {
+                    mRecruitOriginalPersona = Units.EnemyVisuals[mRecruitEnemy].PersonaId;
+                    Units.EnemyVisuals[mRecruitEnemy].PersonaId = (ushort)Destination.Id;
+                }
+                UpdateMenuModel();
+            }
+        }
+
+        /// <summary>The persona the chosen Shadow gives in the unmodified game.</summary>
+        public int RecruitOriginalPersona => mRecruitEnemy > 0 ? mRecruitOriginalPersona : 0;
+
+        /// <summary>
+        /// Turns a placeholder slot into a usable persona: clears NotRegisterable (which keeps the game's placeholders
+        /// out of the compendium), gives it a level, and names it after the source model. Everything stays editable.
+        /// </summary>
+        private void EnableFreeSlot()
+        {
+            Stats.Flags &= ~PersonaFlags.NotRegisterable;
+            if ( Stats.Level == 0 ) Stats.Level = 1;
+            ModelScale = 100; // placeholders carry leftover scales (some 60%); start from the model's own size
+            // Placeholders' inheritance values aren't real types; borrow the template persona's.
+            if ( Destination.Template != null && !new ushort[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 15 }.Contains( Stats.Inheritance ) )
+                Stats.Inheritance = Personas.Stats[Destination.Template.Id].Inheritance;
+            try { PersonaName = DefaultName( SourceModel ); }
+            catch ( Exception ) { /* keep the placeholder name; the editor reports name problems */ }
+        }
+
+        /// <summary>A persona name from a model's catalog label: "0190 The Reaper — EM0190.GMD" -> "The Reaper".</summary>
+        public static string DefaultName( ModelEntry model )
+        {
+            var label = model.DisplayName.Split( '—' )[0].Split( '/' )[0].Trim();
+            var parts = label.Split( ' ', 2 );
+            if ( parts.Length == 2 && parts[0].Length == 4 && parts[0].All( char.IsDigit ) ) label = parts[1].Trim();
+            return label.Length > 0 ? label : "New Persona";
         }
 
         /// <summary>
@@ -96,10 +158,10 @@ namespace PersonaSwapper.Core.Swap
         }
 
         /// <summary>The Shadow model the game shows for this persona in menus and the compendium, if it has one.</summary>
-        public string? MenuModelPath { get; }
+        public string? MenuModelPath { get; private set; }
 
         /// <summary>The Shadow's battle animations (BEM), used with <see cref="MenuModelPath"/> in battle.</summary>
-        public string? ShadowAnimationPath { get; }
+        public string? ShadowAnimationPath { get; private set; }
 
         /// <summary>
         /// Also replace <see cref="MenuModelPath"/> so menus and the compendium show the new model. That file is the
@@ -161,7 +223,7 @@ namespace PersonaSwapper.Core.Swap
 
         /// <summary>Bind-pose heights (model units) of the source model and the destination persona's original model.</summary>
         public (float Source, float Destination) ModelHeights()
-            => (ModelMetrics.Height( Game, SourceModel.Path ), ModelMetrics.Height( Game, Destination.BattleModelPath ));
+            => (ModelMetrics.Height( Game, SourceModel.Path ), ModelMetrics.Height( Game, Destination.ExistingBattleModelPath ));
 
         /// <summary>
         /// Scale that makes the source model appear the same height in battle as the destination persona does
@@ -169,6 +231,8 @@ namespace PersonaSwapper.Core.Swap
         /// </summary>
         public short SuggestMatchingScale()
         {
+            if ( Destination.IsFreeSlot )
+                return ModelScale; // a new persona has no original size to match
             var (source, destination) = ModelHeights();
             if ( source <= 0 || destination <= 0 )
                 return OriginalModelScale;
@@ -176,11 +240,29 @@ namespace PersonaSwapper.Core.Swap
             return (short)Math.Clamp( (int)( Math.Round( scale / 5 ) * 5 ), 10, 1000 );
         }
 
-        public string? DestinationPackPath( AnimationPackKind kind ) => kind switch
+        /// <summary>Where the exported pack goes (a new file for a free slot).</summary>
+        public string? DestinationPackPath( AnimationPackKind kind ) => OutputPack( Game, Destination, kind );
+
+        /// <summary>The pack in the game to start from: the destination's own, or the template persona's for a free slot.</summary>
+        public string? ExistingPackPath( AnimationPackKind kind ) => ExistingPack( Game, Destination, kind );
+
+        public static string? ExistingPack( GameData game, PersonaEntry destination, AnimationPackKind kind )
         {
-            AnimationPackKind.Battle => Destination.BattleAnimationPath,
-            _ => Game.Archive.Contains( $"{Destination.Folder}/GT{Destination.Id:D4}.GAP" ) ? $"{Destination.Folder}/GT{Destination.Id:D4}.GAP" : null,
-        };
+            if ( destination.Template != null )
+                return ExistingPack( game, destination.Template, kind );
+            return kind == AnimationPackKind.Battle
+                ? destination.BattleAnimationPath
+                : game.Archive.Contains( $"{destination.Folder}/GT{destination.Id:D4}.GAP" ) ? $"{destination.Folder}/GT{destination.Id:D4}.GAP" : null;
+        }
+
+        public static string? OutputPack( GameData game, PersonaEntry destination, AnimationPackKind kind )
+        {
+            if ( destination.Template == null )
+                return ExistingPack( game, destination, kind );
+            if ( ExistingPack( game, destination.Template, kind ) == null )
+                return null;
+            return kind == AnimationPackKind.Battle ? destination.BattleAnimationPath : $"{destination.Folder}/GT{destination.Id:D4}.GAP";
+        }
 
         /// <summary>
         /// Default slot mapping, always from the source model's own animations:
@@ -195,13 +277,11 @@ namespace PersonaSwapper.Core.Swap
             var mainPack = ownPacks.FirstOrDefault( p => AnimationCache.Shared.Info( game.Archive, p ).Any( a => !a.IsEmpty ) );
             var idleIndex = mainPack == null ? 0 : AnimationCache.Shared.Info( game.Archive, mainPack ).First( a => !a.IsEmpty ).Index;
             var slotForSlot = source.Category is ModelCategory.Persona or ModelCategory.Enemy;
-            var destinationModel = destination.BattleModelPath;
+            var destinationModel = destination.ExistingBattleModelPath;
 
             foreach ( var kind in new[] { AnimationPackKind.Battle, AnimationPackKind.Secondary } )
             {
-                var destinationPack = kind == AnimationPackKind.Battle
-                    ? destination.BattleAnimationPath
-                    : ( game.Archive.Contains( $"{destination.Folder}/GT{destination.Id:D4}.GAP" ) ? $"{destination.Folder}/GT{destination.Id:D4}.GAP" : null );
+                var destinationPack = ExistingPack( game, destination, kind );
                 if ( destinationPack == null )
                     continue;
 

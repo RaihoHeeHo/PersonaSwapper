@@ -23,6 +23,18 @@ namespace PersonaSwapper.App.ViewModels
                 .ToList();
             Skills = Named( game, NameTable.Skills );
             Traits = Named( game, NameTable.Traits );
+            // Shadows you can negotiate with: enemies whose UNIT.TBL entry gives a persona, labelled with that persona.
+            var recruitable = new List<IdName> { new IdName( 0, "(none — keep the game's recruits)" ) };
+            for ( var unit = 1; unit < game.Units.EnemyVisuals.Count; unit++ )
+            {
+                var persona = game.Units.EnemyVisuals[unit].PersonaId;
+                var enemy = game.Names.Get( NameTable.Enemies, unit )?.Trim();
+                if ( persona == 0 || string.IsNullOrWhiteSpace( enemy ) || enemy.Equals( "Not Used", StringComparison.OrdinalIgnoreCase ) ||
+                     game.Catalog.Personas.All( p => p.Id != persona ) )
+                    continue;
+                recruitable.Add( new IdName( unit, $"{enemy}  (normally gives {game.Names.Get( NameTable.Personas, persona )})" ) );
+            }
+            RecruitableShadows = recruitable;
             AllAnimationPacks = game.Archive.Paths
                 .Where( p => p.StartsWith( "MODEL/CHARACTER/", StringComparison.OrdinalIgnoreCase ) &&
                              p.EndsWith( ".GAP", StringComparison.OrdinalIgnoreCase ) )
@@ -37,6 +49,9 @@ namespace PersonaSwapper.App.ViewModels
         public IReadOnlyList<IdName> Traits { get; }
 
         public IReadOnlyList<string> AllAnimationPacks { get; }
+
+        /// <summary>Shadows that give a persona when negotiated with (ID 0 = none).</summary>
+        public IReadOnlyList<IdName> RecruitableShadows { get; }
 
         public static IReadOnlyList<IdName> Inheritance { get; } = new[]
         {

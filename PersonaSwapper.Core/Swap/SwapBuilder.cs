@@ -78,10 +78,12 @@ namespace PersonaSwapper.Core.Swap
             foreach ( var group in project.Slots.GroupBy( s => s.Pack ) )
             {
                 var packPath = project.DestinationPackPath( group.Key );
-                if ( packPath == null )
+                var basePath = project.ExistingPackPath( group.Key );
+                if ( packPath == null || basePath == null )
                     continue;
 
-                var output = cache.FreshPack( game.Archive, packPath );
+                // A free slot has no pack yet: start from the template persona's (same 11/3-slot layout).
+                var output = cache.FreshPack( game.Archive, basePath );
                 var contributors = new List<(string Path, bool Own)>();
                 foreach ( var slot in group.OrderBy( s => s.Slot ) )
                 {
@@ -122,7 +124,7 @@ namespace PersonaSwapper.Core.Swap
                 // the output starts from, then the packs animations came from, the source's own packs last, so an
                 // animation used unchanged is written exactly as shipped.
                 RefreshNameHashes( sourceBytes );
-                RefreshNameHashes( cache.Bytes( game.Archive, packPath ) );
+                RefreshNameHashes( cache.Bytes( game.Archive, basePath ) );
                 foreach ( var path in contributors.OrderBy( c => c.Own ).Select( c => c.Path ).Distinct( StringComparer.OrdinalIgnoreCase ) )
                     RefreshNameHashes( cache.Bytes( game.Archive, path ) );
                 result.Files[packPath] = Save( output );
@@ -321,6 +323,7 @@ namespace PersonaSwapper.Core.Swap
                 return ids;
             }
 
+            if ( project.Destination.IsFreeSlot ) return; // nothing to compare a new persona with
             var original = AnimationCache.Shared.Model( project.Game.Archive, project.Destination.BattleModelPath ).Model;
             if ( original == null ) return;
             var missing = Ids( original ).Except( Ids( sourceModel ) ).OrderBy( x => x ).ToList();

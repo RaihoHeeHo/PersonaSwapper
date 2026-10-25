@@ -71,6 +71,9 @@
             <TextBlock DockPanel.Dock="Top" Classes="step" Text="2 · DESTINATION PERSONA" />
             <TextBox DockPanel.Dock="Top" Margin="0,0,0,6" Watermark="Search personas…"
                      Text="{Binding DestinationSearch}" />
+            <CheckBox DockPanel.Dock="Top" Margin="0,0,0,6" Content="Free slots: add as a new persona"
+                      IsChecked="{Binding ShowFreeSlots}"
+                      ToolTip.Tip="Lists unused persona slots the game ships with; picking one adds the source model as an extra persona instead of replacing one" />
             <ListBox ItemsSource="{Binding Destinations}" SelectedItem="{Binding SelectedDestination}">
               <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="game:PersonaEntry">
@@ -124,6 +127,10 @@
           <Panel IsVisible="{Binding HasEditor}">
           <DockPanel DataContext="{Binding Editor}" x:DataType="vm:SwapEditorViewModel">
             <TextBlock DockPanel.Dock="Top" Classes="step" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+            <Border DockPanel.Dock="Top" IsVisible="{Binding IsNewPersona}" Background="#2A1D1F" BorderBrush="{StaticResource P5RedBrush}"
+                    BorderThickness="3,0,0,0" Padding="10,6" Margin="0,0,0,6">
+              <TextBlock Classes="hint" Foreground="#F4F2F0" Text="{Binding NewPersonaHint}" />
+            </Border>
 
             <!-- Export -->
             <Border DockPanel.Dock="Bottom" Margin="0,10,0,0" Padding="0,10,0,0" BorderThickness="0,1,0,0"
@@ -254,7 +261,7 @@
                       <Grid ColumnDefinitions="110,120,Auto,Auto">
                         <TextBlock Grid.Column="0" Text="Scale %" Classes="fieldLabel" />
                         <NumericUpDown Grid.Column="1" Minimum="10" Maximum="1000" Increment="5" FormatString="0" Value="{Binding ModelScale}" />
-                        <Button Grid.Column="2" Margin="8,0,0,0" Content="{Binding MatchScaleLabel}" Command="{Binding MatchScaleCommand}" />
+                        <Button Grid.Column="2" Margin="8,0,0,0" Content="{Binding MatchScaleLabel}" Command="{Binding MatchScaleCommand}" IsVisible="{Binding !IsNewPersona}" />
                         <Button Grid.Column="3" Margin="8,0,0,0" Content="Reset" Command="{Binding ResetScaleCommand}" />
                       </Grid>
                       <TextBlock Classes="hint" Text="{Binding ScaleHint}" />
@@ -264,6 +271,12 @@
                       <TextBlock Classes="step" Text="MENU AND COMPENDIUM MODEL" />
                       <CheckBox Content="{Binding MenuModelLabel}" IsChecked="{Binding ReplaceMenuModel}" IsVisible="{Binding HasMenuModel}" />
                       <TextBlock Classes="hint" TextWrapping="Wrap" Text="{Binding MenuModelHint}" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="6">
+                      <TextBlock Classes="step" Text="RECRUIT FROM A SHADOW" />
+                      <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding RecruitOptions}" SelectedItem="{Binding SelectedRecruit}" />
+                      <TextBlock Classes="hint" Text="{Binding RecruitHint}" />
                     </StackPanel>
 
                     <StackPanel Spacing="6">

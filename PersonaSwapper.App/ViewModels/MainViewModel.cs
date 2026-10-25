@@ -64,6 +64,11 @@ namespace PersonaSwapper.App.ViewModels
 
         partial void OnDestinationSearchChanged( string value ) => RefreshDestinations();
 
+        /// <summary>Also list unused persona slots, to add the source model as a brand-new persona.</summary>
+        [ObservableProperty] private bool _showFreeSlots;
+
+        partial void OnShowFreeSlotsChanged( bool value ) => RefreshDestinations();
+
         partial void OnSelectedSourceChanged( ModelEntry? value )
         {
             Log.Info( $"Source model selected: {value?.Path ?? "(none)"}" );
@@ -203,7 +208,8 @@ namespace PersonaSwapper.App.ViewModels
                 return;
 
             var terms = DestinationSearch.Split( ' ', StringSplitOptions.RemoveEmptyEntries );
-            foreach ( var persona in Game.Catalog.Personas )
+            var list = ShowFreeSlots ? Game.Catalog.FreeSlots.Concat( Game.Catalog.Personas ) : Game.Catalog.Personas;
+            foreach ( var persona in list )
                 if ( terms.All( t => persona.ToString().Contains( t, StringComparison.OrdinalIgnoreCase ) ) )
                     Destinations.Add( persona );
         }

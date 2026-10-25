@@ -157,7 +157,7 @@ namespace PersonaSwapper.App.ViewModels
                 if ( seen.Add( path ) ) yield return Label( path );
             foreach ( var kind in new[] { AnimationPackKind.Battle, AnimationPackKind.Secondary } )
             {
-                var path = project.DestinationPackPath( kind );
+                var path = project.ExistingPackPath( kind );
                 if ( path != null && seen.Add( path ) ) yield return Label( path );
             }
         }
@@ -171,6 +171,8 @@ namespace PersonaSwapper.App.ViewModels
                 return new PackOption( path, SwapProject.IsBattlePack( path ) ? $"{name}  · own, battle" : $"{name}  · own" );
             if ( folder.Equals( project.Destination.Folder, StringComparison.OrdinalIgnoreCase ) )
                 return new PackOption( path, $"{name}  · {project.Destination.Name}'s (retarget)" );
+            if ( project.Destination.Template is { } template && folder.Equals( template.Folder, StringComparison.OrdinalIgnoreCase ) )
+                return new PackOption( path, $"{name}  · {template.Name}'s (retarget)" );
             return new PackOption( path, $"{name}  · other" );
         }
 

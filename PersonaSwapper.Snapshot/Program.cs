@@ -39,6 +39,7 @@ namespace PersonaSwapper.Snapshot
             Capture( window, outDir, "1-loaded" );
 
             vm.SourceCategory = 0;
+            vm.ShowFreeSlots = true; // so a free-slot ID can be picked too
             vm.SelectedSource = vm.SourceModels.First( m => m.Path.Equals( args[2], StringComparison.OrdinalIgnoreCase ) );
             vm.SelectedDestination = vm.Destinations.First( p => p.Id == int.Parse( args[3] ) );
             WaitUntil( () => vm.Editor != null && !vm.IsBusy, 60 );
