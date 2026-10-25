@@ -78,6 +78,10 @@ Findings this is based on (checked against the game files):
 - Bone names are UTF-8 (e.g. `Bip01 L ﾎﾟﾆｰﾃｰﾙ 1`), each stored with a hash. GFDLibrary used to read them as Shift-JIS,
   which garbled such names and their hashes on save; names now pass through byte-exact with their original hashes.
   `pswap <game> gaproundtrip` re-saves all 400 persona packs identically.
+- Preview navigation: drag to rotate, right-drag or Shift-drag to pan, scroll or pinch to zoom, double-click or **Fit**
+  to frame the whole animation, **Reset** (R) for the default view. **Follow** (on by default) keeps the camera on the
+  model, since battle animations can carry a model up to ~30× its own size away (e.g. Joker running across the field).
+  Framing ignores the outermost 1% of vertices so stray parts don't shrink the model.
 - Preview materials follow the game's settings: P5R stores other data in the diffuse alpha of most opaque materials
   (310 of 351 sampled), so alpha is only used for alpha-tested, transparent or additive materials.
 

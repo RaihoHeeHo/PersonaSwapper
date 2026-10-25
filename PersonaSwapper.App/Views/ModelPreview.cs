@@ -21,7 +21,9 @@ namespace PersonaSwapper.App.Views
     /// <summary>
     /// OpenGL viewport that plays the selected animation on the source model.
     /// Skinning happens on the CPU (<see cref="SkinnedModel"/>); this control uploads the posed vertices
-    /// each frame and draws them with a simple textured, lit shader. Drag to orbit, scroll to zoom.
+    /// each frame and draws them with a simple textured, lit shader.
+    /// Navigation: drag to orbit; right/middle-drag or Shift+drag to pan; scroll or pinch to zoom; double-click (or F)
+    /// to fit the whole animation in view; R to reset the view.
     /// </summary>
     public sealed class ModelPreview : OpenGlControlBase
     {
@@ -61,10 +63,57 @@ namespace PersonaSwapper.App.Views
         private bool mGlReady;
         private string? mGlError;
 
-        private float mYaw = 25, mPitch = -12, mZoom = 1;
+        private const float FieldOfView = 40 * MathF.PI / 180;
+        private const float DefaultYaw = 25, DefaultPitch = -12;
+        private float mYaw = DefaultYaw, mPitch = DefaultPitch, mZoom = 1;
         private Point? mLastPointer;
-        private Vector3 mCenter;
+        private bool mPanning;
+        private Vector3 mCenter;       // framing center (from the model's bounds)
+        private Vector3 mPan;          // user pan offset from the framing center
         private float mRadius = 1;
+        private float mLastDistance = 1;
+        private volatile bool mFitRequested, mResetRequested;
+        private bool mUserNavigated; // until the user moves the camera, switching animations re-frames automatically
+        private bool mFrameOnNextRender;
+        private Vector3 mFollowOffset;   // framing center relative to the live bounds center (follow mode)
+        private Vector3 mFollowCenter;   // smoothed live center
+        private bool mFollowSnap = true;
+
+        /// <summary>
+        /// Keep the camera on the model as the animation moves it (battle animations can carry a model 30 times its
+        /// own size away). Off: the camera stays put, framed on the whole animation.
+        /// </summary>
+        public bool Follow
+        {
+            get => mFollow;
+            set { mFollow = value; mFitRequested = true; RequestNextFrameRendering(); }
+        }
+        private bool mFollow = true;
+
+        public ModelPreview()
+        {
+            Focusable = true;
+            // macOS trackpad pinch.
+            AddHandler( Gestures.PointerTouchPadGestureMagnifyEvent, OnMagnify );
+        }
+
+        /// <summary>Back to the default angle, framed on the whole animation.</summary>
+        public void ResetView()
+        {
+            mYaw = DefaultYaw;
+            mPitch = DefaultPitch;
+            mZoom = 1;
+            mPan = Vector3.Zero;
+            mResetRequested = true; // re-framed at the next frame, where the model is posed
+            RequestNextFrameRendering();
+        }
+
+        /// <summary>Re-centre and zoom so the model stays in view for the whole animation (keeps the angle).</summary>
+        public void FitToPose()
+        {
+            mFitRequested = true;
+            RequestNextFrameRendering();
+        }
 
         protected override void OnDataContextChanged( EventArgs e )
         {
@@ -173,13 +222,35 @@ namespace PersonaSwapper.App.Views
             mSkinned.Update( mAnimation, (float)mAnimationTime );
             if ( mFirstFrame ) Log.Step( "First frame: drawing" );
 
-            // Camera framed on the bind-pose bounds, orbiting the center.
+            if ( mResetRequested || mFitRequested || mFrameOnNextRender )
+            {
+                if ( mResetRequested || mFitRequested ) mUserNavigated = false;
+                mResetRequested = mFitRequested = mFrameOnNextRender = false;
+                FrameAnimation();
+                mPan = Vector3.Zero;
+                mZoom = 1;
+            }
+
+            // Camera orbiting the framing center plus the user's pan.
             var distance = mRadius * 2.6f * mZoom;
-            var orbit = Matrix4x4.CreateRotationX( mPitch * MathF.PI / 180 ) * Matrix4x4.CreateRotationY( mYaw * MathF.PI / 180 );
-            var eye = mCenter + Vector3.Transform( new Vector3( 0, 0, distance ), orbit );
-            var view = Matrix4x4.CreateLookAt( eye, mCenter, Vector3.UnitY );
-            var projection = Matrix4x4.CreatePerspectiveFieldOfView( 40 * MathF.PI / 180, (float)width / height,
-                                                                     Math.Max( 0.01f, distance - mRadius * 3 ), distance + mRadius * 3 );
+            mLastDistance = distance;
+            Vector3 target;
+            if ( mFollow )
+            {
+                var live = ( mSkinned.BoundsMin + mSkinned.BoundsMax ) / 2 + mFollowOffset;
+                mFollowCenter = mFollowSnap ? live : Vector3.Lerp( mFollowCenter, live, 1 - MathF.Exp( -(float)delta * 12 ) );
+                mFollowSnap = false;
+                target = mFollowCenter + mPan;
+            }
+            else
+                target = mCenter + mPan;
+            var orbit = Orbit();
+            var eye = target + Vector3.Transform( new Vector3( 0, 0, distance ), orbit );
+            var view = Matrix4x4.CreateLookAt( eye, target, Vector3.UnitY );
+            // Generous depth range so big or far-off parts aren't clipped when zoomed in or out.
+            var near = Math.Max( distance * 0.005f, mRadius * 0.0005f );
+            var far = distance + mRadius * 40;
+            var projection = Matrix4x4.CreatePerspectiveFieldOfView( FieldOfView, (float)width / height, near, far );
             var mvp = view * projection;
 
             GL.Enable( EnableCap.DepthTest );
@@ -274,6 +345,7 @@ namespace PersonaSwapper.App.Views
             {
                 Log.Info( $"Preview animation changed on {modelPath}: {( mAnimation == null ? "bind pose" : $"{mAnimation.Duration:0.##}s, {mAnimation.Controllers?.Count ?? 0} controllers" )}" );
                 mFirstFrame = true;
+                if ( !mUserNavigated ) mFrameOnNextRender = true;
                 return; // same model, only the animation changed
             }
             Log.Step( $"Preview loading {modelPath}" );
@@ -297,9 +369,11 @@ namespace PersonaSwapper.App.Views
                     Log.Warn( $"{modelPath}: {issue}" );
                 Log.Step( $"Posing bind pose ({mSkinned.Meshes.Count} meshes, {mSkinned.Meshes.Sum( m => m.Positions.Length )} vertices)" );
                 mSkinned.Update( null, 0 );
-                mCenter = ( mSkinned.BoundsMin + mSkinned.BoundsMax ) / 2;
-                mRadius = Math.Max( 1e-3f, ( mSkinned.BoundsMax - mSkinned.BoundsMin ).Length() / 2 );
-                Log.Info( $"Bounds {mSkinned.BoundsMin} - {mSkinned.BoundsMax}" );
+                FrameAnimation();
+                mPan = Vector3.Zero;
+                mZoom = 1;
+                mUserNavigated = false;
+                Log.Info( $"Bounds {mSkinned.BoundsMin} - {mSkinned.BoundsMax}; framing center {mCenter}, radius {mRadius:0.##}" );
                 if ( mSkinned.NonFiniteVertices > 0 )
                     Log.Warn( $"{modelPath}: {mSkinned.NonFiniteVertices} vertices are NaN/infinite in the bind pose (bad weights or matrices); hidden" );
 
@@ -520,13 +594,61 @@ void main()
             return shader;
         }
 
-        // ---- Orbit / zoom ----
+        // ---- Navigation ----
+
+        /// <summary>
+        /// Frames the model over the whole current animation (sampled), so it stays in view while it plays even when
+        /// the motion moves it far from its resting pose. Stray vertices are ignored (see <see cref="SkinnedModel.FramingBox"/>).
+        /// </summary>
+        private void FrameAnimation()
+        {
+            if ( mSkinned == null ) return;
+            var min = new Vector3( float.MaxValue );
+            var max = new Vector3( float.MinValue );
+            var largest = 0f;
+            var offset = Vector3.Zero;
+            var samples = mAnimation != null && mAnimation.Duration > 0 ? 8 : 0;
+            for ( var k = 0; k <= samples; k++ )
+            {
+                mSkinned.Update( mAnimation, samples == 0 ? 0 : mAnimation!.Duration * k / samples );
+                var (a, b) = mSkinned.FramingBox();
+                min = Vector3.Min( min, a );
+                max = Vector3.Max( max, b );
+                largest = Math.Max( largest, ( b - a ).Length() / 2 );
+                offset += ( a + b ) / 2 - ( mSkinned.BoundsMin + mSkinned.BoundsMax ) / 2;
+            }
+            mSkinned.Update( mAnimation, (float)mAnimationTime );
+            if ( mFollow )
+            {
+                // Size from the biggest pose; position follows the model every frame.
+                mFollowOffset = offset / ( samples + 1 );
+                mRadius = Math.Max( 1e-3f, largest );
+                mFollowSnap = true;
+            }
+            else
+            {
+                mCenter = ( min + max ) / 2;
+                mRadius = Math.Max( 1e-3f, ( max - min ).Length() / 2 );
+            }
+        }
+
+        private Matrix4x4 Orbit() => Matrix4x4.CreateRotationX( mPitch * MathF.PI / 180 ) * Matrix4x4.CreateRotationY( mYaw * MathF.PI / 180 );
 
         protected override void OnPointerPressed( PointerPressedEventArgs e )
         {
             base.OnPointerPressed( e );
+            Focus();
+            var point = e.GetCurrentPoint( this );
+            if ( e.ClickCount == 2 && point.Properties.IsLeftButtonPressed )
+            {
+                FitToPose();
+                return;
+            }
+            mPanning = point.Properties.IsRightButtonPressed || point.Properties.IsMiddleButtonPressed ||
+                       e.KeyModifiers.HasFlag( KeyModifiers.Shift ) || e.KeyModifiers.HasFlag( KeyModifiers.Alt );
             mLastPointer = e.GetPosition( this );
             e.Pointer.Capture( this );
+            e.Handled = true;
         }
 
         protected override void OnPointerMoved( PointerEventArgs e )
@@ -534,24 +656,77 @@ void main()
             base.OnPointerMoved( e );
             if ( mLastPointer is not { } last ) return;
             var p = e.GetPosition( this );
-            mYaw -= (float)( p.X - last.X ) * 0.5f;
-            mPitch = Math.Clamp( mPitch - (float)( p.Y - last.Y ) * 0.4f, -85, 85 );
+            var dx = (float)( p.X - last.X );
+            var dy = (float)( p.Y - last.Y );
+            mUserNavigated = true;
+            if ( mPanning )
+                Pan( dx, dy );
+            else
+            {
+                mYaw -= dx * 0.5f;
+                mPitch = Math.Clamp( mPitch - dy * 0.4f, -89, 89 );
+            }
             mLastPointer = p;
             RequestNextFrameRendering();
+        }
+
+        /// <summary>Moves the target so the model follows the pointer (screen pixels).</summary>
+        private void Pan( float dx, float dy )
+        {
+            var height = (float)Math.Max( 1, Bounds.Height );
+            var worldPerPixel = 2 * mLastDistance * MathF.Tan( FieldOfView / 2 ) / height;
+            var orbit = Orbit();
+            var right = Vector3.TransformNormal( Vector3.UnitX, orbit );
+            var up = Vector3.TransformNormal( Vector3.UnitY, orbit );
+            mPan += ( -dx * right + dy * up ) * worldPerPixel;
         }
 
         protected override void OnPointerReleased( PointerReleasedEventArgs e )
         {
             base.OnPointerReleased( e );
             mLastPointer = null;
+            mPanning = false;
             e.Pointer.Capture( null );
         }
 
         protected override void OnPointerWheelChanged( PointerWheelEventArgs e )
         {
             base.OnPointerWheelChanged( e );
-            mZoom = Math.Clamp( mZoom * ( e.Delta.Y > 0 ? 0.9f : 1.1f ), 0.2f, 5f );
+            // Mouse wheels send whole notches; trackpads send small fractional steps, so scale by the amount.
+            var amount = Math.Clamp( (float)e.Delta.Y, -5f, 5f );
+            Zoom( MathF.Exp( -amount * 0.12f ) );
+            e.Handled = true;
+        }
+
+        private void OnMagnify( object? sender, PointerDeltaEventArgs e )
+        {
+            Zoom( 1f / Math.Max( 0.2f, 1f + (float)e.Delta.X ) );
+            e.Handled = true;
+        }
+
+        private void Zoom( float factor )
+        {
+            mZoom = Math.Clamp( mZoom * factor, 0.02f, 40f );
+            mUserNavigated = true;
             RequestNextFrameRendering();
+        }
+
+        protected override void OnKeyDown( KeyEventArgs e )
+        {
+            base.OnKeyDown( e );
+            switch ( e.Key )
+            {
+                case Avalonia.Input.Key.F: FitToPose(); break;
+                case Avalonia.Input.Key.R: ResetView(); break;
+                case Avalonia.Input.Key.OemPlus: case Avalonia.Input.Key.Add: Zoom( 0.85f ); break;
+                case Avalonia.Input.Key.OemMinus: case Avalonia.Input.Key.Subtract: Zoom( 1 / 0.85f ); break;
+                case Avalonia.Input.Key.Left: mYaw += 10; RequestNextFrameRendering(); break;
+                case Avalonia.Input.Key.Right: mYaw -= 10; RequestNextFrameRendering(); break;
+                case Avalonia.Input.Key.Up: mPitch = Math.Clamp( mPitch + 10, -89, 89 ); RequestNextFrameRendering(); break;
+                case Avalonia.Input.Key.Down: mPitch = Math.Clamp( mPitch - 10, -89, 89 ); RequestNextFrameRendering(); break;
+                default: return;
+            }
+            e.Handled = true;
         }
 
         private sealed class AvaloniaBindingsContext : OpenTK.IBindingsContext

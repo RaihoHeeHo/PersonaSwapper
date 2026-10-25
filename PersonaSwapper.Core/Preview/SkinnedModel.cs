@@ -120,6 +120,40 @@ namespace PersonaSwapper.Core.Preview
 
         public Vector3 BoundsMax { get; private set; }
 
+        /// <summary>
+        /// Center and radius for framing the current pose, ignoring the outermost <paramref name="trim"/> of vertices on
+        /// each axis so a few stray vertices (effect planes, misplaced parts) don't shrink the model to a dot.
+        /// </summary>
+        public (Vector3 Center, float Radius) FramingBounds( float trim = 0.01f )
+        {
+            var (min, max) = FramingBox( trim );
+            return ((min + max) / 2, Math.Max( 1e-3f, ( max - min ).Length() / 2 ));
+        }
+
+        /// <summary>Axis-aligned box of the current pose without the outermost <paramref name="trim"/> of vertices per axis.</summary>
+        public (Vector3 Min, Vector3 Max) FramingBox( float trim = 0.01f )
+        {
+            var count = Meshes.Sum( m => m.Positions.Length );
+            if ( count == 0 ) return (BoundsMin, BoundsMax);
+            var step = Math.Max( 1, count / 60000 ); // a sample is plenty
+            var xs = new List<float>( count / step + 1 );
+            var ys = new List<float>( count / step + 1 );
+            var zs = new List<float>( count / step + 1 );
+            var i = 0;
+            foreach ( var mesh in Meshes )
+                foreach ( var p in mesh.Positions )
+                {
+                    if ( i++ % step != 0 || !float.IsFinite( p.X ) || !float.IsFinite( p.Y ) || !float.IsFinite( p.Z ) ) continue;
+                    xs.Add( p.X ); ys.Add( p.Y ); zs.Add( p.Z );
+                }
+            if ( xs.Count == 0 ) return (-Vector3.One, Vector3.One);
+            xs.Sort(); ys.Sort(); zs.Sort();
+            float At( List<float> v, float q ) => v[Math.Clamp( (int)( q * ( v.Count - 1 ) ), 0, v.Count - 1 )];
+            var min = new Vector3( At( xs, trim ), At( ys, trim ), At( zs, trim ) );
+            var max = new Vector3( At( xs, 1 - trim ), At( ys, 1 - trim ), At( zs, 1 - trim ) );
+            return (min, max);
+        }
+
         public void Update( Animation? animation, float time )
         {
             Pose.Evaluate( animation, time );

@@ -15,6 +15,12 @@ namespace PersonaSwapper.App.Views
 
         private MainViewModel? ViewModel => DataContext as MainViewModel;
 
+        private void OnFollowPreview( object? sender, RoutedEventArgs e ) => PreviewHost.Follow = FollowCheck.IsChecked == true;
+
+        private void OnFitPreview( object? sender, RoutedEventArgs e ) => PreviewHost.FitToPose();
+
+        private void OnResetPreview( object? sender, RoutedEventArgs e ) => PreviewHost.ResetView();
+
         private async void OnBrowseGameFolder( object? sender, RoutedEventArgs e )
         {
             var folder = await PickFolder( "Choose the P5R game folder (contains CPK/BASE.CPK)" );

@@ -85,7 +85,17 @@
       <!-- Preview -->
       <Border Grid.Column="1" Classes="panel" Margin="18,0">
         <DockPanel>
-          <TextBlock DockPanel.Dock="Top" Classes="step" Text="PREVIEW" />
+          <DockPanel DockPanel.Dock="Top">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top" Margin="0,-2,0,6">
+              <CheckBox Content="Follow" IsChecked="True" Click="OnFollowPreview" x:Name="FollowCheck"
+                        ToolTip.Tip="Keep the camera on the model while the animation moves it" />
+              <Button Content="Fit" Padding="12,4" Click="OnFitPreview"
+                      ToolTip.Tip="Centre and zoom so the model stays in view for the whole animation (double-click the preview or press F)" />
+              <Button Content="Reset" Padding="12,4" Click="OnResetPreview"
+                      ToolTip.Tip="Default angle and zoom (R)" />
+            </StackPanel>
+            <TextBlock Classes="step" Text="PREVIEW" />
+          </DockPanel>
           <Grid DockPanel.Dock="Bottom" ColumnDefinitions="Auto,Auto,140,*" Margin="0,8,0,0">
             <Button Grid.Column="0" Width="84" Command="{Binding Preview.TogglePlayCommand}"
                     Content="{Binding Preview.IsPlaying, Converter={x:Static views:Converters.PlayPause}}" />
@@ -94,7 +104,12 @@
             <TextBlock Grid.Column="3" Text="{Binding Preview.Message}" Classes="hint" VerticalAlignment="Center" Margin="12,0,0,0" />
           </Grid>
           <Border ClipToBounds="True" Background="#120A0B" BorderBrush="{StaticResource P5RedBrush}" BorderThickness="1">
-            <views:ModelPreview x:Name="PreviewHost" DataContext="{Binding Preview}" />
+            <Panel>
+              <views:ModelPreview x:Name="PreviewHost" DataContext="{Binding Preview}" />
+              <TextBlock IsHitTestVisible="False" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="8,6"
+                         FontSize="11" Foreground="#B7AEAF" TextWrapping="Wrap"
+                         Text="Drag: rotate · Right/Shift-drag: pan · Scroll/pinch: zoom · Double-click: fit" />
+            </Panel>
           </Border>
         </DockPanel>
       </Border>

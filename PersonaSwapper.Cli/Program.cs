@@ -208,6 +208,59 @@ namespace PersonaSwapper.Cli
                     return 0;
                 }
 
+                case "framecheck":
+                {
+                    // Compares plain bounds with the preview's outlier-trimmed framing across models.
+                    PersonaSwapper.Core.Diagnostics.Log.EchoToConsole = false;
+                    var rows = new List<(double Ratio, string Line)>();
+                    foreach ( var m in game.Catalog.Models.Where( m => m.Category is ModelCategory.Persona or ModelCategory.Enemy ) )
+                    {
+                        try
+                        {
+                            var pack = AnimationCache.Shared.Model( game.Archive, m.Path );
+                            if ( pack.Model == null ) continue;
+                            var sk = new SkinnedModel( pack );
+                            sk.Update( null, 0 );
+                            var plain = ( sk.BoundsMax - sk.BoundsMin ).Length() / 2;
+                            var (center, radius) = sk.FramingBounds();
+                            var off = ( center - ( sk.BoundsMin + sk.BoundsMax ) / 2 ).Length();
+                            rows.Add( (plain / radius, $"{m.FileName,-16} plain radius {plain,9:0.0}  framing radius {radius,9:0.0}  ratio {plain / radius,6:0.00}  center shift {off,8:0.0}") );
+                        }
+                        catch { }
+                        AnimationCache.Shared.Clear();
+                    }
+                    Console.WriteLine( $"{rows.Count} models; ratio > 1.5 for {rows.Count( r => r.Ratio > 1.5 )}, > 3 for {rows.Count( r => r.Ratio > 3 )}" );
+                    foreach ( var r in rows.OrderByDescending( r => r.Ratio ).Take( 15 ) ) Console.WriteLine( "  " + r.Line );
+                    return 0;
+                }
+
+                case "animframe":
+                {
+                    // animframe <model> <pack> : how far each animation moves the model from its bind-pose framing.
+                    PersonaSwapper.Core.Diagnostics.Log.EchoToConsole = false;
+                    var sk = new SkinnedModel( AnimationCache.Shared.Model( game.Archive, args[2] ) );
+                    sk.Update( null, 0 );
+                    var (bc, br) = sk.FramingBounds();
+                    var anims = AnimationCache.Shared.FreshPack( game.Archive, args[3] ).Animations;
+                    Console.WriteLine( $"bind pose: center {bc}, radius {br:0.0}" );
+                    for ( var i = 0; i < anims.Count; i++ )
+                    {
+                        var a = anims[i];
+                        if ( a == null || a.Duration <= 0 ) continue;
+                        var min = new System.Numerics.Vector3( float.MaxValue ); var max = new System.Numerics.Vector3( float.MinValue );
+                        float worst = 0;
+                        for ( var k = 0; k <= 8; k++ )
+                        {
+                            sk.Update( a, a.Duration * k / 8 );
+                            var (lo, hi) = sk.FramingBox();
+                            min = System.Numerics.Vector3.Min( min, lo ); max = System.Numerics.Vector3.Max( max, hi );
+                            worst = Math.Max( worst, ( ( lo + hi ) / 2 - bc ).Length() / br );
+                        }
+                        Console.WriteLine( $"  anim {i,2} ({a.Duration:0.00}s): drifts up to {worst:0.00}x the bind radius; whole-animation radius {( max - min ).Length() / 2 / br:0.00}x" );
+                    }
+                    return 0;
+                }
+
                 case "zcompare":
                     ZCompare( game, args.Skip( 2 ).Select( int.Parse ).ToArray() );
                     return 0;
