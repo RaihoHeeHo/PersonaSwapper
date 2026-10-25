@@ -98,8 +98,10 @@ layout), clears *Not registerable*, gives the slot a level, name and 100% scale,
 **Recruit from a Shadow** (works for any persona) points one Shadow's negotiation at this persona in `UNIT.TBL`.
 That Shadow then counts as the persona's Shadow, so with the menu-model option on it also turns into the new model.
 
-Still to confirm in game: whether normal fusion and the compendium list a new persona automatically (by arcana and
-level), and which model the menus show for a persona without a Shadow.
+Menus and the compendium show a persona's Shadow model, or `PSZ<id>.GMD` when it has none (80 of the 103 personas
+without a Shadow ship one, a copy of PS). New personas didn't have one and viewing them in the compendium crashed, so
+the export writes `PSZ<id>.GMD` for every new persona and for any persona without a Shadow model.
+Confirmed in game: a new persona appears in the compendium.
 
 ## Projects
 

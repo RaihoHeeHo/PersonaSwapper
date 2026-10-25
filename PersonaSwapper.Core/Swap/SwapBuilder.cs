@@ -53,6 +53,13 @@ namespace PersonaSwapper.Core.Swap
                 }
             }
 
+            // Menus and the compendium show the persona's Shadow model, or PSZ<id>.GMD when it has no Shadow (80 of the
+            // 103 such personas ship one, a copy of PS; the rest never appear in the compendium). A new persona has no
+            // PSZ, and viewing it in the compendium crashed the game, so write one whenever there's no Shadow model.
+            // New personas always get one, in case the menus don't pick up a recruit Shadow.
+            if ( project.MenuModelPath == null || dest.IsFreeSlot )
+                result.Files[$"{dest.Folder}/PSZ{dest.Id:D4}.GMD"] = sourceBytes;
+
             // The persona menu and compendium show the Shadow model (EM), which is also the Shadow's battle model.
             if ( project.ReplaceMenuModel && project.MenuModelPath != null &&
                  !string.Equals( project.MenuModelPath, project.SourceModel.Path, StringComparison.OrdinalIgnoreCase ) )

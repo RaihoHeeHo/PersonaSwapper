@@ -187,7 +187,7 @@ namespace PersonaSwapper.App.ViewModels
         private string PersonaLabel => Project.Destination.IsFreeSlot ? Project.PersonaName : Project.Destination.Name;
 
         public string MenuModelHint => Project.MenuModelPath == null
-            ? $"{PersonaLabel} has no Shadow model, so menus and the compendium should use its persona model, which is replaced (expected; confirmed only for personas with a Shadow)."
+            ? $"{PersonaLabel} has no Shadow model, so menus and the compendium load its PSZ model; the export writes the new model there (PSZ{Project.Destination.Id:D4}.GMD)."
             : $"The game shows {PersonaLabel}'s Shadow model ({System.IO.Path.GetFileName( Project.MenuModelPath )}) in menus and the compendium. " +
               "That file is also the Shadow in battle, so the Shadow turns into the new model too" +
               ( Project.SourceModel.Category == PersonaSwapper.Core.Game.ModelCategory.Enemy ? " (with the source's own animations)." : ", playing its own animations." );

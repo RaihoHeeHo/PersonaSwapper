@@ -297,6 +297,32 @@ namespace PersonaSwapper.Cli
                     }
                     return 0;
 
+                case "pszsurvey":
+                {
+                    // Which personas have a PSZ model, against whether they have a menu Shadow model.
+                    int withShadow = 0, withShadowPsz = 0, noShadow = 0, noShadowPsz = 0, gtNoShadow = 0, gtNoShadowPsz = 0;
+                    var missing = new List<string>();
+                    foreach ( var p in game.Catalog.Personas )
+                    {
+                        var shadow = SwapProject.FindMenuModel( game, game.Units, p.Id, out _ ) != null;
+                        var psz = game.Archive.Contains( $"{p.Folder}/PSZ{p.Id:D4}.GMD" );
+                        var gt = game.Archive.Contains( $"{p.Folder}/GT{p.Id:D4}.GAP" );
+                        if ( shadow ) { withShadow++; if ( psz ) withShadowPsz++; }
+                        else
+                        {
+                            noShadow++; if ( psz ) noShadowPsz++;
+                            if ( gt ) { gtNoShadow++; if ( psz ) gtNoShadowPsz++; else if ( missing.Count < 12 ) missing.Add( $"{p.Id} {p.Name}" ); }
+                        }
+                    }
+                    Console.WriteLine( $"with a menu Shadow model: {withShadow}, of which {withShadowPsz} also have PSZ" );
+                    Console.WriteLine( $"without one: {noShadow}, of which {noShadowPsz} have PSZ; with GT (menu animations) and no Shadow: {gtNoShadow}, {gtNoShadowPsz} with PSZ" );
+                    Console.WriteLine( "GT, no Shadow, no PSZ: " + string.Join( ", ", missing ) );
+                    var sizes = game.Catalog.Personas.Where( p => game.Archive.Contains( $"{p.Folder}/PSZ{p.Id:D4}.GMD" ) )
+                        .Count( p => game.Archive.GetSize( $"{p.Folder}/PSZ{p.Id:D4}.GMD" ) == game.Archive.GetSize( p.BattleModelPath ) );
+                    Console.WriteLine( $"PSZ the same size as PS: {sizes}" );
+                    return 0;
+                }
+
                 case "zcompare":
                     ZCompare( game, args.Skip( 2 ).Select( int.Parse ).ToArray() );
                     return 0;
