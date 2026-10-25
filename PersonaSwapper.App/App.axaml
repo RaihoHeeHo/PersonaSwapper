@@ -1,35 +1,180 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="PersonaSwapper.App.App"
-             RequestedThemeVariant="Default">
+             RequestedThemeVariant="Dark">
+
+  <!-- Red / black / white theme with an original star pattern (Assets/stars-tile.png, made by tools/make-stars.py). -->
+  <Application.Resources>
+    <Color x:Key="P5Red">#E5101E</Color>
+    <Color x:Key="P5RedDark">#8E0A12</Color>
+    <Color x:Key="P5Black">#0B0909</Color>
+    <Color x:Key="P5White">#F4F2F0</Color>
+    <SolidColorBrush x:Key="P5RedBrush" Color="{StaticResource P5Red}" />
+    <SolidColorBrush x:Key="P5RedDarkBrush" Color="{StaticResource P5RedDark}" />
+    <SolidColorBrush x:Key="P5BlackBrush" Color="{StaticResource P5Black}" />
+    <SolidColorBrush x:Key="P5WhiteBrush" Color="{StaticResource P5White}" />
+    <SolidColorBrush x:Key="P5PanelBrush" Color="#F00B0909" />
+    <SolidColorBrush x:Key="P5FieldBrush" Color="#1A1314" />
+    <ImageBrush x:Key="P5StarsBrush" Source="avares://PersonaSwapper/Assets/stars-tile.png"
+                TileMode="Tile" Stretch="UniformToFill"
+                DestinationRect="0,0,560,560" />
+  </Application.Resources>
+
   <Application.Styles>
-    <FluentTheme />
+    <FluentTheme>
+      <FluentTheme.Palettes>
+        <ColorPaletteResources x:Key="Dark"
+                               Accent="#E5101E"
+                               AltHigh="#0B0909" AltLow="#0B0909" AltMedium="#0B0909" AltMediumHigh="#0B0909" AltMediumLow="#0B0909"
+                               BaseHigh="#F4F2F0" BaseLow="#3A2C2E" BaseMedium="#B7AEAF" BaseMediumHigh="#D6CFD0" BaseMediumLow="#7D7072"
+                               ChromeAltLow="#D6CFD0" ChromeBlackHigh="#000000" ChromeBlackLow="#D6CFD0" ChromeBlackMedium="#000000" ChromeBlackMediumLow="#000000"
+                               ChromeDisabledHigh="#3A2C2E" ChromeDisabledLow="#7D7072" ChromeGray="#9A8E90" ChromeHigh="#9A8E90"
+                               ChromeLow="#1A1314" ChromeMedium="#221A1B" ChromeMediumLow="#1A1314" ChromeWhite="#F4F2F0"
+                               ListLow="#2A1D1F" ListMedium="#3A2C2E" RegionColor="#0B0909" ErrorText="#FF5A5F" />
+      </FluentTheme.Palettes>
+    </FluentTheme>
     <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
 
+    <!-- Window: star pattern behind black panels. -->
+    <Style Selector="Window">
+      <Setter Property="Background" Value="{StaticResource P5StarsBrush}" />
+      <Setter Property="Foreground" Value="{StaticResource P5WhiteBrush}" />
+    </Style>
+
+    <!-- Section headers: white on a slanted red tag. -->
     <Style Selector="TextBlock.step">
       <Setter Property="FontSize" Value="13" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="Margin" Value="0,0,0,6" />
+      <Setter Property="FontWeight" Value="Black" />
+      <Setter Property="Foreground" Value="{StaticResource P5WhiteBrush}" />
+      <Setter Property="Background" Value="{StaticResource P5RedBrush}" />
+      <Setter Property="Padding" Value="10,3,14,3" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="Margin" Value="4,0,0,8" />
+      <Setter Property="RenderTransform" Value="skewX(-12deg)" />
     </Style>
     <Style Selector="TextBlock.hint">
       <Setter Property="FontSize" Value="12" />
-      <Setter Property="Opacity" Value="0.65" />
+      <Setter Property="Foreground" Value="#B7AEAF" />
       <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
     <Style Selector="TextBlock.fieldLabel">
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="Margin" Value="0,0,8,0" />
-      <Setter Property="Opacity" Value="0.8" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="#D6CFD0" />
     </Style>
+
+    <!-- Panels: near-black cards with a white edge and a hard red drop shadow. -->
     <Style Selector="Border.panel">
-      <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" />
-      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Background" Value="{StaticResource P5PanelBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource P5WhiteBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
+      <Setter Property="CornerRadius" Value="0" />
       <Setter Property="Padding" Value="12" />
+      <Setter Property="BoxShadow" Value="7 7 0 0 #000000" />
     </Style>
+    <Style Selector="Border.bar">
+      <Setter Property="Background" Value="{StaticResource P5PanelBrush}" />
+    </Style>
+
+    <!-- Title tag in the top bar. -->
+    <Style Selector="Border.titleTag">
+      <Setter Property="Background" Value="{StaticResource P5WhiteBrush}" />
+      <Setter Property="Padding" Value="12,2,16,2" />
+      <Setter Property="RenderTransform" Value="skewX(-12deg)" />
+      <Setter Property="BoxShadow" Value="4 4 0 0 #E5101E" />
+    </Style>
+
+    <!-- Buttons: red, square, white on hover. -->
+    <Style Selector="Button">
+      <Setter Property="Background" Value="{StaticResource P5RedBrush}" />
+      <Setter Property="Foreground" Value="{StaticResource P5WhiteBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource P5BlackBrush}" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource P5WhiteBrush}" />
+      <Setter Property="Foreground" Value="{StaticResource P5BlackBrush}" />
+    </Style>
+    <Style Selector="Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource P5RedDarkBrush}" />
+      <Setter Property="Foreground" Value="{StaticResource P5WhiteBrush}" />
+    </Style>
+    <Style Selector="Button:disabled /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#3A2C2E" />
+      <Setter Property="Foreground" Value="#9A8E90" />
+    </Style>
+
+    <!-- The Export button: big slanted tag. -->
+    <Style Selector="Button.accent">
+      <Setter Property="FontSize" Value="18" />
+      <Setter Property="FontWeight" Value="Black" />
+      <Setter Property="BorderBrush" Value="{StaticResource P5WhiteBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
+      <Setter Property="RenderTransform" Value="skewX(-8deg)" />
+    </Style>
+    <Style Selector="Button.accent /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource P5RedBrush}" />
+      <Setter Property="Foreground" Value="{StaticResource P5WhiteBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource P5WhiteBrush}" />
+    </Style>
+    <Style Selector="Button.accent:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource P5WhiteBrush}" />
+      <Setter Property="Foreground" Value="{StaticResource P5RedBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource P5RedBrush}" />
+    </Style>
+
+    <!-- Inputs: square, dark fields. -->
+    <Style Selector="TextBox, ComboBox, NumericUpDown">
+      <Setter Property="CornerRadius" Value="0" />
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="Background" Value="{StaticResource P5FieldBrush}" />
+    </Style>
+    <Style Selector="ComboBox">
+      <Setter Property="Background" Value="{StaticResource P5FieldBrush}" />
+    </Style>
+    <Style Selector="CheckBox">
+      <Setter Property="CornerRadius" Value="0" />
+    </Style>
+
+    <!-- Lists: selected rows are red with white text. -->
+    <Style Selector="ListBox">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource P5RedBrush}" />
+      <Setter Property="Foreground" Value="{StaticResource P5WhiteBrush}" />
+    </Style>
+    <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#FF2A37" />
+    </Style>
+    <Style Selector="ListBoxItem:selected TextBlock.hint">
+      <Setter Property="Foreground" Value="#FFD9DB" />
+    </Style>
+
+    <!-- Tabs: heavy uppercase labels, red underline. -->
+    <Style Selector="TabItem">
+      <Setter Property="FontWeight" Value="Black" />
+      <Setter Property="FontSize" Value="22" />
+    </Style>
+
     <Style Selector="DataGrid">
       <Setter Property="GridLinesVisibility" Value="Horizontal" />
       <Setter Property="HeadersVisibility" Value="Column" />
       <Setter Property="CanUserResizeColumns" Value="True" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="HorizontalGridLinesBrush" Value="#3A2C2E" />
+    </Style>
+    <Style Selector="DataGridColumnHeader">
+      <Setter Property="Foreground" Value="{StaticResource P5WhiteBrush}" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="Background" Value="{StaticResource P5RedDarkBrush}" />
+    </Style>
+
+    <Style Selector="ProgressBar">
+      <Setter Property="Foreground" Value="{StaticResource P5RedBrush}" />
     </Style>
   </Application.Styles>
 </Application>

@@ -13,6 +13,6 @@ namespace PersonaSwapper.App.Views
             new FuncValueConverter<string?, string>( path => path == null ? "" : Path.GetFileName( path ) );
 
         public static readonly IValueConverter WarningBrush =
-            new FuncValueConverter<bool, IBrush>( warn => warn ? new SolidColorBrush( Color.Parse( "#E0605A" ) ) : new SolidColorBrush( Color.Parse( "#7FB77E" ) ) );
+            new FuncValueConverter<bool, IBrush>( warn => warn ? new SolidColorBrush( Color.Parse( "#FFC83D" ) ) : new SolidColorBrush( Color.Parse( "#F4F2F0" ) ) );
     }
 }

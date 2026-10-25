@@ -146,7 +146,7 @@ namespace PersonaSwapper.App.Views
 
             GL.BindFramebuffer( FramebufferTarget.Framebuffer, fb );
             GL.Viewport( 0, 0, width, height );
-            GL.ClearColor( 0.118f, 0.125f, 0.157f, 1f );
+            GL.ClearColor( 0.071f, 0.039f, 0.043f, 1f );
             GL.ClearDepth( 1.0 );
             GL.Clear( ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit );
 

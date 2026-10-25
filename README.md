@@ -10,6 +10,8 @@ A tool for macOS, Windows and Linux for Persona 5 Royal that turns any model in 
    of the selected slot playing on the source model.
 4. **Export** — writes a Reloaded-II mod (Persona Essentials) with the model, rebuilt animation packs and any edited tables.
 
+![Persona Swapper](docs/screenshot.jpg)
+
 ## Run it
 
 Download a build from the [Releases](https://github.com/RaihoHeeHo/PersonaSwapper/releases) page, or build from source.
