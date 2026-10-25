@@ -186,6 +186,10 @@ namespace PersonaSwapper.App.ViewModels
             {
                 if ( category != null && model.Category != category )
                     continue;
+                // Shadows that are just a persona's Shadow form are left out of "Shadows / bosses"; the persona's own
+                // model is under "Personas" (they still appear under "All models").
+                if ( category == ModelCategory.Enemy && model.IsPersonaShadow )
+                    continue;
                 if ( terms.All( t => model.DisplayName.Contains( t, StringComparison.OrdinalIgnoreCase ) ||
                                      model.Path.Contains( t, StringComparison.OrdinalIgnoreCase ) ) )
                     SourceModels.Add( model );

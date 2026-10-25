@@ -15,4 +15,8 @@
     <ProjectReference Include="../../GFD-Studio-macOS/GFDLibrary/GFDLibrary.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Game/PersonaShadows.txt" LogicalName="PersonaSwapper.Core.Game.PersonaShadows.txt" />
+  </ItemGroup>
+
 </Project>

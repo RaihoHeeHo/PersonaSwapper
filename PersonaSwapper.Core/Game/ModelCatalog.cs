@@ -21,8 +21,12 @@ namespace PersonaSwapper.Core.Game
         int Id,
         string Path,
         string DisplayName,
-        IReadOnlyList<string> AnimationPaths )
+        IReadOnlyList<string> AnimationPaths,
+        int? PersonaEquivalent = null )
     {
+        /// <summary>For a Shadow model: true when it's the Shadow form of a persona that has its own persona model.</summary>
+        public bool IsPersonaShadow => PersonaEquivalent != null;
+
         public string FileName => System.IO.Path.GetFileName( Path );
 
         public override string ToString() => DisplayName;
@@ -49,6 +53,23 @@ namespace PersonaSwapper.Core.Game
             [1] = "Joker", [2] = "Ryuji", [3] = "Morgana", [4] = "Ann", [5] = "Yusuke",
             [6] = "Makoto", [7] = "Haru", [8] = "Futaba", [9] = "Akechi", [10] = "Kasumi",
         };
+
+        private static readonly Lazy<Dictionary<int, int>> PersonaShadows = new( LoadPersonaShadows );
+
+        private static Dictionary<int, int> LoadPersonaShadows()
+        {
+            var map = new Dictionary<int, int>();
+            using var stream = typeof( ModelCatalog ).Assembly.GetManifestResourceStream( "PersonaSwapper.Core.Game.PersonaShadows.txt" );
+            if ( stream == null ) return map;
+            using var reader = new StreamReader( stream );
+            while ( reader.ReadLine() is { } line )
+            {
+                var parts = line.Split( ' ', StringSplitOptions.RemoveEmptyEntries );
+                if ( parts.Length == 2 && int.TryParse( parts[0], out var model ) && int.TryParse( parts[1], out var persona ) )
+                    map.TryAdd( model, persona );
+            }
+            return map;
+        }
 
         public IReadOnlyList<ModelEntry> Models { get; private set; } = Array.Empty<ModelEntry>();
 
@@ -79,6 +100,11 @@ namespace PersonaSwapper.Core.Game
                         list.Add( name );
                 }
             }
+
+            // Enemy model folder -> the persona it's the Shadow form of (same textures as that persona's own model).
+            // Bosses also name a persona in UNIT.TBL (Kamoshida names Arsène) without being one, so the table alone
+            // can't tell; the list was computed from the game files with `pswap <game> shadowmap`.
+            var personaByModel = PersonaShadows.Value;
 
             // Character animations live in subfolders (BATTLE, FIELD, EVENT, LIFE) and in COMMON_ANIM/BCMN<id>, ACMN<id>.
             var characterGaps = new Dictionary<int, IReadOnlyList<string>>();
@@ -114,7 +140,8 @@ namespace PersonaSwapper.Core.Game
                     var label = enemyNamesByModel.TryGetValue( id, out var list )
                         ? string.Join( " / ", list.Take( 3 ) ) + ( list.Count > 3 ? $" (+{list.Count - 3})" : "" )
                         : names?.Get( NameTable.Enemies, id );
-                    models.Add( new ModelEntry( ModelCategory.Enemy, id, path, $"{Label( label, id )} — {file}", gaps ) );
+                    models.Add( new ModelEntry( ModelCategory.Enemy, id, path, $"{Label( label, id )} — {file}", gaps,
+                                                personaByModel.TryGetValue( id, out var persona ) ? persona : null ) );
                 }
                 else if ( ( m = sCharacterFile.Match( path ) ).Success )
                 {

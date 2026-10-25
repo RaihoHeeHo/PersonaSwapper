@@ -64,6 +64,9 @@ Findings this is based on (checked against the game files):
   `BPS`/`GT`, or a character's `BATTLE`/`FIELD`/`EVENT`/`LIFE` subfolder packs plus `COMMON_ANIM/BCMN<id>`/`ACMN<id>`
   (battle packs for the model's costume first, e.g. Joker's `BB0001_051.GAP` with 90 battle animations). The destination
   persona's packs are still offered, labelled "(retarget)".
+- The "Shadows / bosses" list leaves out the 148 Shadows that are just a persona's Shadow form (same textures as the
+  persona's own model, which is under "Personas"); they're still under "All models". Bosses name a persona in UNIT.TBL
+  too (Kamoshida names Arsène), so the list comes from texture matching (`pswap <game> shadowmap`).
 - The "Bones" column shows how many of an animation's bones exist on the source model; low numbers mean that motion
   won't play properly on it.
 - The game matches animation controllers to bones by name: shipped packs have indices that don't line up with
