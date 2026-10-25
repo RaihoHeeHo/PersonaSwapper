@@ -51,6 +51,24 @@ namespace PersonaSwapper.Snapshot
             Pump( 0.5 );
             Capture( window, outDir, "3-animations" );
 
+            // Camera controls: simulate a drag, a right-drag and a scroll on the preview and check the camera moved.
+            var preview = window.GetVisualDescendants().OfType<ModelPreview>().First();
+            var center = preview.TranslatePoint( new Point( preview.Bounds.Width / 2, preview.Bounds.Height / 2 ), window ) ?? default;
+            Console.WriteLine( $"Camera before: {preview.CameraDescription}" );
+            window.MouseDown( center, Avalonia.Input.MouseButton.Left );
+            window.MouseMove( center + new Point( 80, 30 ) );
+            window.MouseUp( center + new Point( 80, 30 ), Avalonia.Input.MouseButton.Left );
+            Pump( 0.1 );
+            Console.WriteLine( $"Camera after left-drag: {preview.CameraDescription}" );
+            window.MouseDown( center, Avalonia.Input.MouseButton.Right );
+            window.MouseMove( center + new Point( 40, 0 ) );
+            window.MouseUp( center + new Point( 40, 0 ), Avalonia.Input.MouseButton.Right );
+            Pump( 0.1 );
+            Console.WriteLine( $"Camera after right-drag: {preview.CameraDescription}" );
+            window.MouseWheel( center, new Vector( 0, 2 ) );
+            Pump( 0.1 );
+            Console.WriteLine( $"Camera after scroll: {preview.CameraDescription}" );
+
             // Scroll the persona tab to the skills/affinities section.
             tabs.SelectedIndex = 0;
             Pump( 0.3 );

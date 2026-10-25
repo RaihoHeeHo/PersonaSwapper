@@ -25,8 +25,14 @@ namespace PersonaSwapper.App.Views
     /// Navigation: drag to orbit; right/middle-drag or Shift+drag to pan; scroll or pinch to zoom; double-click (or F)
     /// to fit the whole animation in view; R to reset the view.
     /// </summary>
-    public sealed class ModelPreview : OpenGlControlBase
+    public sealed class ModelPreview : OpenGlControlBase, Avalonia.Rendering.ICustomHitTest
     {
+        /// <summary>
+        /// The GL picture isn't something Avalonia's hit testing can see (the control paints no background), so without
+        /// this every click, drag and scroll passed straight through to the panel behind it.
+        /// </summary>
+        public bool HitTest( Point point ) => new Rect( Bounds.Size ).Contains( point );
+
         /// <summary>How a mesh's material uses texture alpha (P5R stores other data in alpha on most opaque materials).</summary>
         private enum AlphaUse
         {
@@ -96,6 +102,9 @@ namespace PersonaSwapper.App.Views
             // macOS trackpad pinch.
             AddHandler( Gestures.PointerTouchPadGestureMagnifyEvent, OnMagnify );
         }
+
+        /// <summary>Camera state, for logs and tests.</summary>
+        public string CameraDescription => $"yaw {mYaw:0.#}, pitch {mPitch:0.#}, zoom {mZoom:0.###}, pan {mPan}";
 
         /// <summary>Back to the default angle, framed on the whole animation.</summary>
         public void ResetView()
