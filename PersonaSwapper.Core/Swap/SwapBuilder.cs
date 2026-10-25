@@ -60,6 +60,22 @@ namespace PersonaSwapper.Core.Swap
             if ( project.MenuModelPath == null || dest.IsFreeSlot )
                 result.Files[$"{dest.Folder}/PSZ{dest.Id:D4}.GMD"] = sourceBytes;
 
+            // Velvet Room placement: a new persona's entry is empty (all zeros), which crashed the fusion screen and the
+            // compendium. Copy the placement of a persona of similar size. Every other free slot also gets a typical
+            // placement, so several new-persona mods can be combined (whichever copy of this file loads last wins).
+            var placement = VelvetPlacement.Parse( game.Archive.Read( VelvetPlacement.Path ) );
+            if ( placement.IsEmpty( dest.Id ) )
+            {
+                var reference = VelvetReference( project, placement );
+                placement.Copy( reference, dest.Id );
+                var typical = placement.TypicalPersona();
+                foreach ( var slot in game.Catalog.FreeSlots )
+                    if ( placement.IsEmpty( slot.Id ) )
+                        placement.Copy( typical, slot.Id );
+                result.Files[VelvetPlacement.Path] = placement.Serialize();
+                Log.Info( $"Velvet Room placement for #{dest.Id} copied from persona {reference} ({game.Names.Get( Tables.NameTable.Personas, reference )})" );
+            }
+
             // The persona menu and compendium show the Shadow model (EM), which is also the Shadow's battle model.
             if ( project.ReplaceMenuModel && project.MenuModelPath != null &&
                  !string.Equals( project.MenuModelPath, project.SourceModel.Path, StringComparison.OrdinalIgnoreCase ) )
@@ -178,6 +194,20 @@ namespace PersonaSwapper.Core.Swap
             foreach ( var c in animation.Controllers )
                 if ( c.TargetKind == TargetKind.Node && index.TryGetValue( c.TargetName, out var id ) )
                     c.TargetId = id;
+        }
+
+        /// <summary>
+        /// Persona whose Velvet Room placement suits the source model: the source itself if it is a persona (or a
+        /// persona's Shadow form), otherwise the compendium persona closest in size.
+        /// </summary>
+        private static int VelvetReference( SwapProject project, VelvetPlacement placement )
+        {
+            var source = project.SourceModel;
+            if ( source.Category == Game.ModelCategory.Persona && placement.Has( source.Id ) && !placement.IsEmpty( source.Id ) )
+                return source.Id;
+            if ( source.PersonaEquivalent is { } persona && placement.Has( persona ) && !placement.IsEmpty( persona ) )
+                return persona;
+            return placement.NearestBySize( Preview.ModelMetrics.Height( project.Game, source.Path ) );
         }
 
         private static void RefreshNameHashes( byte[] bytes )

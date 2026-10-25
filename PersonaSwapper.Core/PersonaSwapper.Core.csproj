@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Game/PersonaShadows.txt" LogicalName="PersonaSwapper.Core.Game.PersonaShadows.txt" />
+    <EmbeddedResource Include="Game/MenuModelHeights.txt" LogicalName="PersonaSwapper.Core.Game.MenuModelHeights.txt" />
   </ItemGroup>
 
 </Project>

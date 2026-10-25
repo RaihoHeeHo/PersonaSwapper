@@ -59,7 +59,10 @@ namespace PersonaSwapper.Core.Tables
             Segment = segment;
             Index = index;
             Offset = index * size;
+            Size = size;
         }
+
+        protected int Size { get; }
 
         protected byte[] Segment { get; }
 
@@ -68,6 +71,9 @@ namespace PersonaSwapper.Core.Tables
         protected int Offset { get; }
 
         protected byte U8( int at ) => Segment[Offset + at];
+
+        /// <summary>A copy of this record's bytes (for diagnostics).</summary>
+        public byte[] RawBytes() => Segment.AsSpan( Offset, Size ).ToArray();
         protected void U8( int at, byte value ) => Segment[Offset + at] = value;
 
         protected ushort U16( int at ) => BinaryPrimitives.ReadUInt16BigEndian( Segment.AsSpan( Offset + at, 2 ) );

@@ -103,6 +103,12 @@ without a Shadow ship one, a copy of PS). New personas didn't have one and viewi
 the export writes `PSZ<id>.GMD` for every new persona and for any persona without a Shadow model.
 Confirmed in game: a new persona appears in the compendium.
 
+The Velvet Room places each persona's model using `FACILITY/COMBINE/TABLE/FCLCMBMODELPOS.DAT` (465 × 48-byte entries,
+entry `id + 1` = persona `id`: position, scale, rotation). Every compendium persona has an entry; free slots are all
+zeros, and the fusion screen and compendium crashed with a new persona in the game. Exports to a free slot copy the
+placement of the persona closest in size (or the source itself if it is a persona), and give every other free slot a
+typical placement so several new-persona mods can be combined.
+
 ## Projects
 
 - `PersonaSwapper.Core` — CPK reading (CriFsV2Lib), table parsers, model catalog, swap builder, mod writer, pose/skinning.

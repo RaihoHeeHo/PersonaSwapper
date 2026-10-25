@@ -323,6 +323,190 @@ namespace PersonaSwapper.Cli
                     return 0;
                 }
 
+                case "modelstats":
+                {
+                    // modelstats <model>... : size, nodes, bones, meshes, vertices, textures (and their pixel totals), materials
+                    PersonaSwapper.Core.Diagnostics.Log.EchoToConsole = false;
+                    foreach ( var path in args.Skip( 2 ) )
+                    {
+                        var pack = AnimationCache.Shared.Model( game.Archive, path );
+                        var model = pack.Model;
+                        var meshes = model?.Nodes.SelectMany( n => n.HasAttachments ? n.Attachments.Where( a => a.Type == GFDLibrary.Models.NodeAttachmentType.Mesh ).Select( a => a.GetValue<GFDLibrary.Models.Mesh>() ) : Enumerable.Empty<GFDLibrary.Models.Mesh>() ).ToList() ?? new();
+                        var verts = meshes.Sum( m => m?.VertexCount ?? 0 );
+                        var maxVerts = meshes.Count == 0 ? 0 : meshes.Max( m => m?.VertexCount ?? 0 );
+                        var tex = pack.Textures?.Values.ToList() ?? new();
+                        long texBytes = tex.Sum( t => (long)( t.Data?.Length ?? 0 ) );
+                        var otherAttachments = model?.Nodes.SelectMany( n => n.HasAttachments ? n.Attachments.Where( a => a.Type != GFDLibrary.Models.NodeAttachmentType.Mesh ).Select( a => a.Type.ToString() ) : Enumerable.Empty<string>() ).GroupBy( x => x ).Select( g => $"{g.Key}x{g.Count()}" ) ?? Enumerable.Empty<string>();
+                        Console.WriteLine( $"{path}: {game.Archive.GetSize( path ):N0} bytes, v{pack.Version:X8}, nodes {model?.Nodes.Count() ?? 0}, bones {model?.Bones?.Count ?? 0}, meshes {meshes.Count}, vertices {verts:N0} (max {maxVerts:N0}/mesh), " +
+                                           $"textures {tex.Count} ({texBytes / 1024 / 1024.0:0.0} MB), materials {pack.Materials?.Count ?? 0}, anims embedded {pack.AnimationPack?.Animations?.Count ?? 0}, other attachments [{string.Join( ",", otherAttachments )}], F8 {pack.ChunkType000100F8 != null}, F9 {pack.ChunkType000100F9 != null}" );
+                        AnimationCache.Shared.Clear();
+                    }
+                    return 0;
+                }
+
+                case "search":
+                    foreach ( var m in game.Catalog.Models.Where( m => m.DisplayName.Contains( args[2], StringComparison.OrdinalIgnoreCase ) ) )
+                        Console.WriteLine( $"{m.Path}  |  {m.DisplayName}  |  persona shadow of {m.PersonaEquivalent?.ToString() ?? "-"}  |  {string.Join( ", ", m.AnimationPaths.Select( System.IO.Path.GetFileName ) )}" );
+                    return 0;
+
+                case "pak":
+                {
+                    // pak <path> [filter] : list a PAK's entries
+                    var pak = PakArchive.Parse( game.Archive.Read( args[2] ) );
+                    var filter = args.Length > 3 ? args[3] : "";
+                    var shown = 0;
+                    foreach ( var e in pak.Entries.Where( e => e.Name.Contains( filter, StringComparison.OrdinalIgnoreCase ) ) )
+                    {
+                        if ( shown++ < 60 ) Console.WriteLine( $"{e.Data.Length,10}  {e.Name}" );
+                    }
+                    Console.WriteLine( $"{pak.Entries.Count} entries, {shown} matching" );
+                    return 0;
+                }
+
+                case "extract":
+                    System.IO.File.WriteAllBytes( args[3], game.Archive.Read( args[2] ) );
+                    Console.WriteLine( $"wrote {args[3]}" );
+                    return 0;
+
+                case "rowcheck":
+                {
+                    // Compare a persona's table rows with what registerable personas normally have.
+                    var real = game.Catalog.Personas.Where( p => !game.Personas.Stats[p.Id].Flags.HasFlag( PersonaFlags.NotRegisterable ) ).Select( p => p.Id ).ToList();
+                    var traitIn0 = real.Count( id => game.Personas.Skills[id].GetSlot( 0 ).Kind == LearnableKind.Trait );
+                    var traitIds = real.Select( id => game.Personas.Skills[id].GetSlot( 0 ) ).Where( x => x.Kind == LearnableKind.Trait ).Select( x => (int)x.Id ).ToList();
+                    Console.WriteLine( $"{real.Count} registerable personas; slot 1 is a trait for {traitIn0}; trait ids {traitIds.Min()}..{traitIds.Max()}, id 0 used {traitIds.Count( x => x == 0 )} times" );
+                    Console.WriteLine( $"trait name 0: '{game.Names.Get( NameTable.Traits, 0 )}', trait names: {game.Names.Count( NameTable.Traits )}" );
+                    var unk = real.Select( id => game.Personas.Stats[id] ).GroupBy( st => st.RawBytes()[12] * 256 + st.RawBytes()[13] ).OrderByDescending( g => g.Count() ).Take( 5 ).Select( g => $"{g.Key}:{g.Count()}" );
+                    Console.WriteLine( "stats unknown u16 values: " + string.Join( ", ", unk ) );
+                    foreach ( var id in args.Skip( 2 ).Select( int.Parse ) )
+                    {
+                        var st = game.Personas.Stats[id];
+                        Console.WriteLine( $"#{id}: stats bytes {Convert.ToHexString( st.RawBytes() )}; skills:" );
+                        for ( var i = 0; i < PersonaSkillsEntry.SkillSlotCount; i++ )
+                        {
+                            var sl = game.Personas.Skills[id].GetSlot( i );
+                            if ( sl.Kind != 0 || sl.Id != 0 ) Console.WriteLine( $"   slot {i + 1}: kind {sl.Kind} id {sl.Id} +{sl.LevelsAfterBase} ({( sl.Kind == LearnableKind.Trait ? game.Names.Get( NameTable.Traits, sl.Id ) : game.Names.Get( NameTable.Skills, sl.Id ) )})" );
+                        }
+                    }
+                    return 0;
+                }
+
+                case "idlists":
+                {
+                    // Files that look like lists of persona IDs (u16 BE or LE): many distinct registerable persona IDs.
+                    var reg = game.Catalog.Personas.Where( p => !game.Personas.Stats[p.Id].Flags.HasFlag( PersonaFlags.NotRegisterable ) )
+                        .Select( p => p.Id ).ToHashSet();
+                    var skip = new[] { ".DDS", ".GMD", ".GAP", ".ADX", ".USM", ".AWB", ".ACB", ".GFS", ".EPL", ".BED", ".SPD", ".TMX" };
+                    foreach ( var path in game.Archive.Paths.OrderBy( p => p ) )
+                    {
+                        if ( skip.Any( e => path.EndsWith( e, StringComparison.OrdinalIgnoreCase ) ) ) continue;
+                        var size = game.Archive.GetSize( path );
+                        if ( size < 200 || size > 3_000_000 ) continue;
+                        var d = game.Archive.Read( path );
+                        foreach ( var le in new[] { false, true } )
+                        {
+                            // best run of consecutive u16s that are all registerable persona IDs
+                            int best = 0, bestAt = 0;
+                            for ( var align = 0; align < 2; align++ )
+                            {
+                                int run = 0, start = 0; var seen = new HashSet<int>();
+                                for ( var i = align; i + 1 < d.Length; i += 2 )
+                                {
+                                    var v = le ? d[i] | ( d[i + 1] << 8 ) : ( d[i] << 8 ) | d[i + 1];
+                                    if ( reg.Contains( v ) ) { if ( run == 0 ) { start = i; seen.Clear(); } run++; seen.Add( v ); if ( seen.Count > best ) { best = seen.Count; bestAt = start; } }
+                                    else run = 0;
+                                }
+                            }
+                            if ( best >= 40 ) Console.WriteLine( $"{path} ({size} bytes, {( le ? "LE" : "BE" )}): run of {best} distinct registerable persona IDs at offset {bestAt}" );
+                        }
+                    }
+                    return 0;
+                }
+
+                case "tblsegs":
+                {
+                    // tblsegs <persona id>... : every TBL's segments; for per-persona sized ones (multiple of 464), show the rows.
+                    var ids = args.Skip( 2 ).Select( int.Parse ).ToArray();
+                    foreach ( var path in game.Archive.Paths.Where( p => p.StartsWith( "BATTLE/TABLE/" ) && p.EndsWith( ".TBL" ) ).OrderBy( p => p ) )
+                    {
+                        SegmentedTable t;
+                        try { t = SegmentedTable.Parse( game.Archive.Read( path ) ); } catch { Console.WriteLine( $"{path}: not segmented" ); continue; }
+                        Console.WriteLine( $"{path}: {string.Join( ", ", t.Segments.Select( x => x.Length ) )}" );
+                        for ( var si = 0; si < t.Segments.Count; si++ )
+                        {
+                            var seg = t.Segments[si];
+                            foreach ( var count in new[] { 464, 465, 466, 470, 480, 500, 512 } )
+                            {
+                                if ( seg.Length % count != 0 || seg.Length / count > 400 || seg.Length / count < 1 ) continue;
+                                var size = seg.Length / count;
+                                Console.WriteLine( $"   seg {si}: {count} x {size} bytes?" );
+                                foreach ( var id in ids ) Console.WriteLine( $"      {id,4}: {Convert.ToHexString( seg, id * size, Math.Min( size, 48 ) )}" );
+                                break;
+                            }
+                        }
+                    }
+                    return 0;
+                }
+
+                case "perpersona":
+                {
+                    // File-name patterns (a number replaced by {id}) that exist for most registerable personas.
+                    var reg = game.Catalog.Personas.Where( p => !game.Personas.Stats[p.Id].Flags.HasFlag( PersonaFlags.NotRegisterable ) )
+                        .Select( p => p.Id ).ToHashSet();
+                    var patterns = new Dictionary<string, HashSet<int>>();
+                    var rx = new System.Text.RegularExpressions.Regex( @"\d{2,4}" );
+                    foreach ( var path in game.Archive.Paths )
+                    {
+                        foreach ( System.Text.RegularExpressions.Match m in rx.Matches( path ) )
+                        {
+                            var id = int.Parse( m.Value );
+                            if ( !reg.Contains( id ) ) continue;
+                            var key = path.Replace( m.Value, "{" + m.Length + "}" );
+                            if ( !patterns.TryGetValue( key, out var set ) ) patterns[key] = set = new();
+                            set.Add( id );
+                        }
+                    }
+                    var target = args.Length > 2 ? int.Parse( args[2] ) : 176;
+                    foreach ( var (k, v) in patterns.Where( p => p.Value.Count >= reg.Count * 0.6 ).OrderByDescending( p => p.Value.Count ) )
+                    {
+                        var digits = int.Parse( k.Substring( k.IndexOf( '{' ) + 1, 1 ) );
+                        var mine = k.Replace( "{" + digits + "}", target.ToString( new string( '0', digits ) ) );
+                        Console.WriteLine( $"{v.Count,4}/{reg.Count}  {k}   slot {target}: {( game.Archive.Contains( mine ) ? "has it" : "MISSING" )}" );
+                    }
+                    return 0;
+                }
+
+                case "regids":
+                    // registerable persona IDs (for cross-checking external tables)
+                    Console.WriteLine( string.Join( ",", Enumerable.Range( 0, game.Personas.Stats.Count ).Where( id => !game.Personas.Stats[id].Flags.HasFlag( PersonaFlags.NotRegisterable ) ) ) );
+                    return 0;
+
+                case "fclpos":
+                {
+                    // Velvet Room model placement (FCLCMBMODELPOS.DAT entry id+1) against each persona's menu-model height.
+                    PersonaSwapper.Core.Diagnostics.Log.EchoToConsole = false;
+                    var d = game.Archive.Read( "FACILITY/COMBINE/TABLE/FCLCMBMODELPOS.DAT" );
+                    float F( int entry, int k ) => BitConverter.ToSingle( d, 12 + entry * 48 + k * 4 );
+                    var rows = new List<(int Id, float H, float S, float X, float Y, float Z)>();
+                    foreach ( var p in game.Catalog.Personas.Where( p => !game.Personas.Stats[p.Id].Flags.HasFlag( PersonaFlags.NotRegisterable ) ).Take( args.Length > 2 ? int.Parse( args[2] ) : 60 ) )
+                    {
+                        var menu = SwapProject.FindMenuModel( game, game.Units, p.Id, out _ ) ?? ( game.Archive.Contains( $"{p.Folder}/PSZ{p.Id:D4}.GMD" ) ? $"{p.Folder}/PSZ{p.Id:D4}.GMD" : p.BattleModelPath );
+                        var h = ModelMetrics.Height( game, menu );
+                        rows.Add( (p.Id, h, F( p.Id + 1, 4 ), F( p.Id + 1, 0 ), F( p.Id + 1, 1 ), F( p.Id + 1, 2 )) );
+                        AnimationCache.Shared.Clear();
+                    }
+                    if ( args.Length > 3 )
+                        System.IO.File.WriteAllLines( args[3], new[] { "# Persona ID, menu-model height (bind pose, model units) for registerable personas. Generated by: pswap <game> fclpos 999 <file>" }
+                            .Concat( rows.Where( r => r.H > 0 && r.S > 0 ).Select( r => $"{r.Id} {r.H.ToString( "0.0", System.Globalization.CultureInfo.InvariantCulture )}" ) ) );
+                    foreach ( var r in rows.Take( 25 ) )
+                        Console.WriteLine( $"{r.Id,4}  height {r.H,7:0.0}  scale {r.S,6:0.000}  shown height {r.H * r.S,7:0.0}  pos {r.X,7:0.0} {r.Y,7:0.0} {r.Z,7:0.0}" );
+                    var shown = rows.Where( r => r.H > 0 && r.S > 0 ).Select( r => r.H * r.S ).OrderBy( x => x ).ToList();
+                    Console.WriteLine( $"shown height: median {shown[shown.Count / 2]:0.0}, p10 {shown[shown.Count / 10]:0.0}, p90 {shown[shown.Count * 9 / 10]:0.0}" );
+                    var ys = rows.Select( r => r.Y ).OrderBy( x => x ).ToList();
+                    Console.WriteLine( $"pos y: median {ys[ys.Count / 2]:0.0}; x median {rows.Select( r => r.X ).OrderBy( x => x ).ElementAt( rows.Count / 2 ):0.0}; z median {rows.Select( r => r.Z ).OrderBy( x => x ).ElementAt( rows.Count / 2 ):0.0}" );
+                    return 0;
+                }
+
                 case "zcompare":
                     ZCompare( game, args.Skip( 2 ).Select( int.Parse ).ToArray() );
                     return 0;
@@ -880,6 +1064,11 @@ namespace PersonaSwapper.Cli
             var names = NameTable.Parse( build.Files[GameData.NameTablePath] );
             var personas = PersonaTable.Parse( build.Files[GameData.PersonaTablePath] );
             Console.WriteLine( $"  name now '{names.Get( NameTable.Personas, personaId )}', level {personas.Stats[personaId].Level}, flags {personas.Stats[personaId].Flags}" );
+            if ( build.Files.TryGetValue( VelvetPlacement.Path, out var placeBytes ) )
+            {
+                var placed = VelvetPlacement.Parse( placeBytes );
+                Console.WriteLine( $"  Velvet Room placement for {personaId}: scale {placed.Scale( personaId ):0.###}; empty free slots left: {game.Catalog.FreeSlots.Count( f => placed.IsEmpty( f.Id ) )}" );
+            }
             if ( build.Files.TryGetValue( GameData.UnitTablePath, out var unitBytes ) && recruitEnemy > 0 )
                 Console.WriteLine( $"  UNIT.TBL: enemy {recruitEnemy} now gives persona {UnitTable.Parse( unitBytes ).EnemyVisuals[recruitEnemy].PersonaId}" );
             Console.WriteLine( $"  scale now {VisualTable.Parse( build.Files[GameData.VisualTablePath] ).Personas[personaId].BattleModelScale}%" );
