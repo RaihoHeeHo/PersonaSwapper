@@ -56,9 +56,9 @@ namespace PersonaSwapper.Core.Swap
             // Menus and the compendium show the persona's Shadow model, or PSZ<id>.GMD when it has no Shadow (80 of the
             // 103 such personas ship one, a copy of PS; the rest never appear in the compendium). A new persona has no
             // PSZ, and viewing it in the compendium crashed the game, so write one whenever there's no Shadow model.
-            // New personas always get one, in case the menus don't pick up a recruit Shadow.
-            if ( project.MenuModelPath == null || dest.IsFreeSlot )
-                result.Files[$"{dest.Folder}/PSZ{dest.Id:D4}.GMD"] = sourceBytes;
+            // Always written: some popular mods expect every persona to have a PSZ, and it's harmless when the menus use
+            // a Shadow model instead.
+            result.Files[$"{dest.Folder}/PSZ{dest.Id:D4}.GMD"] = sourceBytes;
 
             // Velvet Room placement: a new persona's entry is empty (all zeros), which crashed the fusion screen and the
             // compendium. Copy the placement of a persona of similar size. Every other free slot also gets a typical

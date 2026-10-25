@@ -100,7 +100,7 @@ That Shadow then counts as the persona's Shadow, so with the menu-model option o
 
 Menus and the compendium show a persona's Shadow model, or `PSZ<id>.GMD` when it has none (80 of the 103 personas
 without a Shadow ship one, a copy of PS). New personas didn't have one and viewing them in the compendium crashed, so
-the export writes `PSZ<id>.GMD` for every new persona and for any persona without a Shadow model.
+every export writes `PSZ<id>.GMD` (a copy of the new model), which some other mods also expect.
 Confirmed in game: a new persona appears in the compendium.
 
 `BATTLE/TABLE/EXIST.TBL` lists every persona that exists (section 4 of four: sorted `{persona id, flags}` pairs, the
