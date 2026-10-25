@@ -76,6 +76,19 @@ namespace PersonaSwapper.Core.Swap
                 Log.Info( $"Velvet Room placement for #{dest.Id} copied from persona {reference} ({game.Names.Get( Tables.NameTable.Personas, reference )})" );
             }
 
+            // Per-persona display record: unused slots have 0.0 where every compendium persona has 1.0, and the fusion
+            // screen and compendium crashed with a new persona until it was set (as the Alraune mod does). All free slots
+            // get it, so several new-persona mods can be combined.
+            var shading = PersonaShading.Parse( game.Archive.Read( PersonaShading.Path ) );
+            if ( shading.NeedsFix( dest.Id ) )
+            {
+                shading.Fix( dest.Id );
+                foreach ( var slot in game.Catalog.FreeSlots )
+                    if ( shading.NeedsFix( slot.Id ) )
+                        shading.Fix( slot.Id );
+                result.Files[PersonaShading.Path] = shading.Serialize();
+            }
+
             // The persona menu and compendium show the Shadow model (EM), which is also the Shadow's battle model.
             if ( project.ReplaceMenuModel && project.MenuModelPath != null &&
                  !string.Equals( project.MenuModelPath, project.SourceModel.Path, StringComparison.OrdinalIgnoreCase ) )

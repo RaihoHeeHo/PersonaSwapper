@@ -1069,6 +1069,8 @@ namespace PersonaSwapper.Cli
                 var placed = VelvetPlacement.Parse( placeBytes );
                 Console.WriteLine( $"  Velvet Room placement for {personaId}: scale {placed.Scale( personaId ):0.###}; empty free slots left: {game.Catalog.FreeSlots.Count( f => placed.IsEmpty( f.Id ) )}" );
             }
+            if ( build.Files.TryGetValue( PersonaShading.Path, out var shdBytes ) )
+                Console.WriteLine( $"  SHDPERSONA.PDD: value for {personaId} now {PersonaShading.Parse( shdBytes ).Value( personaId )}; free slots still 0: {game.Catalog.FreeSlots.Count( f => PersonaShading.Parse( shdBytes ).NeedsFix( f.Id ) )}" );
             if ( build.Files.TryGetValue( GameData.UnitTablePath, out var unitBytes ) && recruitEnemy > 0 )
                 Console.WriteLine( $"  UNIT.TBL: enemy {recruitEnemy} now gives persona {UnitTable.Parse( unitBytes ).EnemyVisuals[recruitEnemy].PersonaId}" );
             Console.WriteLine( $"  scale now {VisualTable.Parse( build.Files[GameData.VisualTablePath] ).Personas[personaId].BattleModelScale}%" );

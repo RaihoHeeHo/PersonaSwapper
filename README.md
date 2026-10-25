@@ -103,6 +103,10 @@ without a Shadow ship one, a copy of PS). New personas didn't have one and viewi
 the export writes `PSZ<id>.GMD` for every new persona and for any persona without a Shadow model.
 Confirmed in game: a new persona appears in the compendium.
 
+`INIT/SHDPERSONA.PDD` (465 × 76-byte records, record = persona ID) has a float 48 bytes into each record that is 1.0
+for all 264 compendium personas and 0.0 for the 130 unused slots. The community Alraune mod (slot 351) sets exactly
+that value; exports now set it to 1.0 for the new persona and every other free slot.
+
 The Velvet Room places each persona's model using `FACILITY/COMBINE/TABLE/FCLCMBMODELPOS.DAT` (465 × 48-byte entries,
 entry `id + 1` = persona `id`: position, scale, rotation). Every compendium persona has an entry; free slots are all
 zeros, and the fusion screen and compendium crashed with a new persona in the game. Exports to a free slot copy the
