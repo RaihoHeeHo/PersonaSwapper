@@ -94,12 +94,17 @@ namespace PersonaSwapper.Core.Game
         public const int DefaultTemplateId = 6; // Pixie: standard 11-slot battle pack and 3-slot GT pack
 
         /// <summary>
-        /// Free slots: placeholder entries the game ships with ("RESERVE", "P5 Unused", "P6 Unused") that have no model
-        /// folder, no Shadow recruits them (UNIT.TBL), and aren't party or story personas. Their table rows already
+        /// Free slots: placeholder entries the game ships with ("RESERVE", "P5 Unused", "P6 Unused") that have no persona
+        /// or enemy model folder, no Shadow recruits them (UNIT.TBL), and aren't party or story personas. Their table rows already
         /// exist (stats, skills, lore, scale) but are flagged NotRegisterable so they never appear.
         /// </summary>
-        public void FindFreeSlots( PersonaTable personas, UnitTable units, NameTable names )
+        public void FindFreeSlots( GameArchive archive, PersonaTable personas, UnitTable units, NameTable names )
         {
+            // The menus load ENEMY/<id>/EM<id>.GMD for persona <id>, so a new persona needs that file; only slots whose
+            // enemy folder doesn't exist can get one without changing a real Shadow.
+            var enemyFolders = archive.Paths.Where( p => p.StartsWith( "MODEL/CHARACTER/ENEMY/", StringComparison.OrdinalIgnoreCase ) )
+                .Select( p => p.Split( '/' ) ).Where( parts => parts.Length > 3 && parts[3].Length == 4 && parts[3].All( char.IsDigit ) )
+                .Select( parts => int.Parse( parts[3] ) ).ToHashSet();
             var withFolder = Personas.Select( p => p.Id ).ToHashSet();
             // Persona IDs a real Shadow recruits. Placeholder enemy rows ("Not Used", "RESERVE", blank) also point at
             // persona IDs, but no encounter uses them, so they don't make a slot unsafe.
@@ -120,7 +125,7 @@ namespace PersonaSwapper.Core.Game
                 var name = names.Get( NameTable.Personas, id )?.Trim() ?? "";
                 var placeholder = name.Equals( "RESERVE", StringComparison.OrdinalIgnoreCase ) || name.EndsWith( " Unused", StringComparison.OrdinalIgnoreCase );
                 var flags = personas.Stats[id].Flags;
-                if ( !placeholder || withFolder.Contains( id ) || recruited.Contains( id ) ||
+                if ( !placeholder || withFolder.Contains( id ) || recruited.Contains( id ) || enemyFolders.Contains( id ) ||
                      flags.HasFlag( PersonaFlags.PartyPersona ) || flags.HasFlag( PersonaFlags.StoryPersona ) )
                     continue;
                 var folder = $"MODEL/CHARACTER/PERSONA/{id:D4}";

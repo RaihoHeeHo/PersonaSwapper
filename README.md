@@ -96,9 +96,12 @@ Exporting to a free slot writes a new `PERSONA/<id>/` folder (model, battle and 
 layout), clears *Not registerable*, gives the slot a level, name and 100% scale, and saves its stats, skills, lore etc.
 
 **Recruit from a Shadow** (works for any persona) points one Shadow's negotiation at this persona in `UNIT.TBL`.
-That Shadow then counts as the persona's Shadow, so with the menu-model option on it also turns into the new model.
+The Shadow keeps its own look.
 
-Menus and the compendium show a persona's Shadow model, or `PSZ<id>.GMD` when it has none (80 of the 103 personas
+Menus, the compendium and the fusion screen load `ENEMY/<persona id>/EM<persona id>.GMD` (the Shadow model, looked up
+by the persona's own ID; with it missing, the game retries it and shows no model). Free slots are only offered when the
+game has no `ENEMY/<id>` folder, and exports write the new model there (plus the source's own Shadow animations when
+the source is a Shadow). Personas also have `PSZ<id>.GMD` (80 of the 103 personas
 without a Shadow ship one, a copy of PS). New personas didn't have one and viewing them in the compendium crashed, so
 every export writes `PSZ<id>.GMD` (a copy of the new model), which some other mods also expect.
 Confirmed in game: a new persona appears in the compendium.

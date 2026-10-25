@@ -100,6 +100,18 @@ namespace PersonaSwapper.Core.Swap
                 result.Files[PersonaShading.Path] = shading.Serialize();
             }
 
+            // A new persona needs ENEMY/<id>/EM<id>.GMD: the menus, compendium and fusion screen load the model from there
+            // (free slots are only offered when the game has no ENEMY/<id> folder, so no real Shadow is affected).
+            if ( dest.IsFreeSlot )
+            {
+                result.Files[SwapProject.EnemyModelPath( dest.Id )] = sourceBytes;
+                var ownBem = project.SourceModel.Category == Game.ModelCategory.Enemy
+                    ? SwapProject.OwnAnimationPacks( project.SourceModel ).FirstOrDefault( p => System.IO.Path.GetFileName( p ).StartsWith( "BEM", StringComparison.OrdinalIgnoreCase ) && p.EndsWith( "_000.GAP", StringComparison.OrdinalIgnoreCase ) )
+                    : null;
+                if ( ownBem != null )
+                    result.Files[$"MODEL/CHARACTER/ENEMY/{dest.Id:D4}/BEM{dest.Id:D4}_000.GAP"] = cache.Bytes( game.Archive, ownBem );
+            }
+
             // The persona menu and compendium show the Shadow model (EM), which is also the Shadow's battle model.
             if ( project.ReplaceMenuModel && project.MenuModelPath != null &&
                  !string.Equals( project.MenuModelPath, project.SourceModel.Path, StringComparison.OrdinalIgnoreCase ) )

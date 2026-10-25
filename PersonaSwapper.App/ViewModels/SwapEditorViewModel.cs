@@ -93,8 +93,7 @@ namespace PersonaSwapper.App.ViewModels
         public string RecruitHint => Project.RecruitFromEnemy == 0
             ? "Negotiating with the chosen Shadow gives this persona instead of its usual one."
             : $"Negotiating with this Shadow now gives {Project.PersonaName} instead of " +
-              $"{Project.Game.Names.Get( Core.Tables.NameTable.Personas, Project.RecruitOriginalPersona )}. " +
-              "It also becomes this persona's Shadow, so the menus show that Shadow's model; keep the menu model option on to replace it.";
+              $"{Project.Game.Names.Get( Core.Tables.NameTable.Personas, Project.RecruitOriginalPersona )}. The Shadow keeps its own look.";
 
         // ---- Mod ----
 
@@ -186,8 +185,10 @@ namespace PersonaSwapper.App.ViewModels
 
         private string PersonaLabel => Project.Destination.IsFreeSlot ? Project.PersonaName : Project.Destination.Name;
 
-        public string MenuModelHint => Project.MenuModelPath == null
-            ? $"{PersonaLabel} has no Shadow model, so menus and the compendium load its PSZ model; the export writes the new model there (PSZ{Project.Destination.Id:D4}.GMD)."
+        public string MenuModelHint => Project.Destination.IsFreeSlot
+            ? $"Menus, the compendium and fusion load ENEMY/{Project.Destination.Id:D4}/EM{Project.Destination.Id:D4}.GMD; the export writes the new model there (no Shadow uses that folder)."
+            : Project.MenuModelPath == null
+            ? $"{PersonaLabel} has no Shadow model (ENEMY/{Project.Destination.Id:D4}/EM{Project.Destination.Id:D4}.GMD)."
             : $"The game shows {PersonaLabel}'s Shadow model ({System.IO.Path.GetFileName( Project.MenuModelPath )}) in menus and the compendium. " +
               "That file is also the Shadow in battle, so the Shadow turns into the new model too" +
               ( Project.SourceModel.Category == PersonaSwapper.Core.Game.ModelCategory.Enemy ? " (with the source's own animations)." : ", playing its own animations." );

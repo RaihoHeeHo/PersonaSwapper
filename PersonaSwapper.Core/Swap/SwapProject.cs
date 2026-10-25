@@ -88,8 +88,7 @@ namespace PersonaSwapper.Core.Swap
 
         /// <summary>
         /// Enemy (unit) ID whose negotiation should give this persona instead of its usual one; 0 = none.
-        /// Written to UNIT.TBL segment 4. That Shadow then counts as this persona's Shadow, so the menus show its model
-        /// (see <see cref="MenuModelPath"/>).
+        /// Written to UNIT.TBL segment 4. The menus don't follow this (they look up the model by persona ID).
         /// </summary>
         public int RecruitFromEnemy
         {
@@ -137,25 +136,19 @@ namespace PersonaSwapper.Core.Swap
         }
 
         /// <summary>
-        /// The persona menu and the compendium show the persona's Shadow model, not PS/PSZX (verified in game: with
-        /// ENEMY/0006/EM0006.GMD replaced, Pixie's menu model changed). The Shadow is the enemy whose UNIT.TBL visual
-        /// entry gives this persona (normally the enemy with the same ID). Personas without a Shadow model use PS.
+        /// The persona menu, the compendium and the fusion screen load <c>ENEMY/&lt;persona id&gt;/EM&lt;persona id&gt;.GMD</c>
+        /// (the persona's Shadow model, looked up by the persona's own ID; verified in game: replacing EM0006 changed
+        /// Pixie's menu model, and a new persona in slot 176 made the game try ENEMY/0176/EM0176.GMD over and over and
+        /// show no model). Null when the game has no such file.
         /// </summary>
         public static string? FindMenuModel( GameData game, UnitTable units, int personaId, out int modelId )
         {
-            modelId = -1;
-            var visuals = units.EnemyVisuals;
-            if ( personaId < visuals.Count && visuals[personaId].PersonaId == personaId )
-                modelId = visuals[personaId].ModelId;
-            else
-            {
-                var match = visuals.FirstOrDefault( v => v.PersonaId == personaId );
-                if ( match != null ) modelId = match.ModelId;
-            }
-            if ( modelId <= 0 ) return null;
-            var path = $"MODEL/CHARACTER/ENEMY/{modelId:D4}/EM{modelId:D4}.GMD";
+            modelId = personaId;
+            var path = EnemyModelPath( personaId );
             return game.Archive.Contains( path ) ? path : null;
         }
+
+        public static string EnemyModelPath( int id ) => $"MODEL/CHARACTER/ENEMY/{id:D4}/EM{id:D4}.GMD";
 
         /// <summary>The Shadow model the game shows for this persona in menus and the compendium, if it has one.</summary>
         public string? MenuModelPath { get; private set; }

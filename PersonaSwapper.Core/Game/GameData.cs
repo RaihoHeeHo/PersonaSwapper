@@ -42,7 +42,7 @@ namespace PersonaSwapper.Core.Game
                 var units = UnitTable.Parse( archive.Read( UnitTablePath ) );
                 var names = NameTable.Parse( archive.Read( NameTablePath ) );
                 var catalog = ModelCatalog.Build( archive, names, units );
-                catalog.FindFreeSlots( personas, units, names );
+                catalog.FindFreeSlots( archive, personas, units, names );
                 return new GameData( archive, personas, units, names, catalog );
             }
             catch
