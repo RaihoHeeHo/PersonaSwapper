@@ -507,6 +507,14 @@ namespace PersonaSwapper.Cli
                     return 0;
                 }
 
+                case "existcheck":
+                {
+                    var orig = game.Archive.Read( ExistTable.Path );
+                    var t = ExistTable.Parse( orig );
+                    Console.WriteLine( $"round-trip identical: {t.Serialize().AsSpan().SequenceEqual( orig )}; {t.Personas.Count} personas" );
+                    return 0;
+                }
+
                 case "zcompare":
                     ZCompare( game, args.Skip( 2 ).Select( int.Parse ).ToArray() );
                     return 0;
@@ -1069,11 +1077,17 @@ namespace PersonaSwapper.Cli
                 var placed = VelvetPlacement.Parse( placeBytes );
                 Console.WriteLine( $"  Velvet Room placement for {personaId}: scale {placed.Scale( personaId ):0.###}; empty free slots left: {game.Catalog.FreeSlots.Count( f => placed.IsEmpty( f.Id ) )}" );
             }
+            if ( build.Files.TryGetValue( ExistTable.Path, out var existBytes ) )
+            {
+                var ex = ExistTable.Parse( existBytes );
+                Console.WriteLine( $"  EXIST.TBL: {personaId} listed {ex.PersonaExists( personaId )}; personas listed {ex.Personas.Count} (was {ExistTable.Parse( game.Archive.Read( ExistTable.Path ) ).Personas.Count}); size {existBytes.Length}" );
+            }
             if ( build.Files.TryGetValue( PersonaShading.Path, out var shdBytes ) )
                 Console.WriteLine( $"  SHDPERSONA.PDD: value for {personaId} now {PersonaShading.Parse( shdBytes ).Value( personaId )}; free slots still 0: {game.Catalog.FreeSlots.Count( f => PersonaShading.Parse( shdBytes ).NeedsFix( f.Id ) )}" );
             if ( build.Files.TryGetValue( GameData.UnitTablePath, out var unitBytes ) && recruitEnemy > 0 )
                 Console.WriteLine( $"  UNIT.TBL: enemy {recruitEnemy} now gives persona {UnitTable.Parse( unitBytes ).EnemyVisuals[recruitEnemy].PersonaId}" );
-            Console.WriteLine( $"  scale now {VisualTable.Parse( build.Files[GameData.VisualTablePath] ).Personas[personaId].BattleModelScale}%" );
+            if ( build.Files.TryGetValue( GameData.VisualTablePath, out var visualBytes ) )
+                Console.WriteLine( $"  scale now {VisualTable.Parse( visualBytes ).Personas[personaId].BattleModelScale}%" );
             var outLore = new PersonaLore( MessageScript.Parse( build.Files[PersonaLore.BmdPath] ) );
             var pakLore = new PersonaLore( MessageScript.Parse( PakArchive.Parse( build.Files[PersonaLore.PakPath] ).Get( PersonaLore.PakEntryName )! ) );
             Console.WriteLine( $"  lore now: {outLore.Get( personaId ).Replace( "\n", " / " )}" );

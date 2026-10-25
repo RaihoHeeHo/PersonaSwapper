@@ -76,6 +76,17 @@ namespace PersonaSwapper.Core.Swap
                 Log.Info( $"Velvet Room placement for #{dest.Id} copied from persona {reference} ({game.Names.Get( Tables.NameTable.Personas, reference )})" );
             }
 
+            // EXIST.TBL lists every persona that exists; a new persona missing from it crashed the fusion screen and
+            // the compendium. Add it (and every other free slot, so several new-persona mods can be combined).
+            var exist = Tables.ExistTable.Parse( game.Archive.Read( Tables.ExistTable.Path ) );
+            if ( !exist.PersonaExists( dest.Id ) )
+            {
+                exist.AddPersona( dest.Id );
+                foreach ( var slot in game.Catalog.FreeSlots )
+                    exist.AddPersona( slot.Id );
+                result.Files[Tables.ExistTable.Path] = exist.Serialize();
+            }
+
             // Per-persona display record: unused slots have 0.0 where every compendium persona has 1.0, and the fusion
             // screen and compendium crashed with a new persona until it was set (as the Alraune mod does). All free slots
             // get it, so several new-persona mods can be combined.

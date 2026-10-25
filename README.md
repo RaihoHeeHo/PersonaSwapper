@@ -103,6 +103,11 @@ without a Shadow ship one, a copy of PS). New personas didn't have one and viewi
 the export writes `PSZ<id>.GMD` for every new persona and for any persona without a Shadow model.
 Confirmed in game: a new persona appears in the compendium.
 
+`BATTLE/TABLE/EXIST.TBL` lists every persona that exists (section 4 of four: sorted `{persona id, flags}` pairs, the
+last ID repeated as an end marker; the header holds each section's count and offset). It contains all 264 compendium
+personas but only 23 of the free slots. Exports add the new persona, and every other free slot so new-persona mods
+can be combined.
+
 `INIT/SHDPERSONA.PDD` (465 × 76-byte records, record = persona ID) has a float 48 bytes into each record that is 1.0
 for all 264 compendium personas and 0.0 for the 130 unused slots. The community Alraune mod (slot 351) sets exactly
 that value; exports now set it to 1.0 for the new persona and every other free slot.
