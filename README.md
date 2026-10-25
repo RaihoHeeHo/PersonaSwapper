@@ -55,7 +55,7 @@ The game folder defaults to `~/Library/Application Support/Steam/steamapps/commo
 | `BPS<id>_000.GAP` (battle animations, 11 slots) and `GT<id>.GAP` | the persona's own pack with each slot replaced as chosen |
 | `MODEL/CHARACTER/ENEMY/<shadow>/EM<shadow>.GMD` (+ `BEM…_000.GAP` for Shadow sources) | the source model: the persona menu and compendium show the persona's **Shadow** model (optional; the Shadow changes in battle too) |
 | `BATTLE/TABLE/PERSONA.TBL`, `UNIT.TBL`, `NAME.TBL`, `VISUAL.TBL` | only if edited; Persona Essentials merges them with other mods |
-| `FACILITY/DATMYTH.BMD` and its copy `datMyth.bmd` in `INIT/DATMSG.PAK` | only if the lore was edited |
+| `FACILITY/DATMYTH.BMD` and its copy `datMyth.bmd` in `INIT/DATMSG.PAK` | only if the lore was edited: the changed entries as `FEmulator/BMD/DATMYTH.msg`, which Persona Essentials merges with other mods' lore (the edited BMD is included as the stand-in the merge replaces) |
 
 Findings this is based on (checked against the game files):
 - Persona folders are named by persona ID. All 302 personas use battle slots 0 and 5–10; slots 1–4 are unused.

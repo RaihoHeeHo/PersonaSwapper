@@ -175,7 +175,7 @@ namespace PersonaSwapper.App.ViewModels
                 } );
 
                 SaveSettings();
-                Status = $"Exported {build.Files.Count} files to {folder}." +
+                Status = $"Exported {build.FileCount} files to {folder}." +
                          ( build.Warnings.Count > 0 ? $" {build.Warnings.Count} warning(s): {string.Join( " ", build.Warnings.Take( 2 ) )}" : " Enable the mod in Reloaded-II." );
             }
             catch ( Exception e )

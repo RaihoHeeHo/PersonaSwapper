@@ -297,6 +297,21 @@ namespace PersonaSwapper.Cli
                     }
                     return 0;
 
+                case "loremsg":
+                {
+                    // loremsg <out.msg> [<out.bmd>]: every lore entry in .msg syntax (to check it compiles back byte-exact), plus the original BMD.
+                    var bmdBytes = game.Archive.Read( PersonaSwapper.Core.Messages.PersonaLore.BmdPath );
+                    var lore = new PersonaSwapper.Core.Messages.PersonaLore( PersonaSwapper.Core.Messages.MessageScript.Parse( bmdBytes ) );
+                    File.WriteAllText( args[2], PersonaSwapper.Core.Messages.PersonaLore.ToMsg( lore.Script.Dialogs ) );
+                    if ( args.Length > 3 ) File.WriteAllBytes( args[3], bmdBytes );
+                    lore.Set( 176, "Test entry for merging." );
+                    var original = new PersonaSwapper.Core.Messages.PersonaLore( PersonaSwapper.Core.Messages.MessageScript.Parse( bmdBytes ) );
+                    var changed = lore.ChangedFrom( original );
+                    Console.WriteLine( $"{lore.Script.Dialogs.Count} entries; after editing 176, changed: {string.Join( ", ", changed.Select( d => d.Name ) )}" );
+                    Console.Write( PersonaSwapper.Core.Messages.PersonaLore.ToMsg( changed ) );
+                    return 0;
+                }
+
                 case "pszsurvey":
                 {
                     // Which personas have a PSZ model, against whether they have a menu Shadow model.
@@ -1054,6 +1069,7 @@ namespace PersonaSwapper.Cli
             var dest = game.Catalog.Personas.FirstOrDefault( p => p.Id == personaId ) ?? game.Catalog.FreeSlots.First( p => p.Id == personaId );
             var project = new SwapProject( game, source, dest ) { CustomBonusTweaks = Environment.GetEnvironmentVariable( "PSWAP_CBT" ) == "1" };
             if ( project.CustomBonusTweaks ) Console.WriteLine( "Custom Bonus Tweaks mode" );
+            if ( Environment.GetEnvironmentVariable( "PSWAP_LORE" ) is { Length: > 0 } loreText ) project.LoreText = loreText;
             if ( dest.IsFreeSlot )
                 Console.WriteLine( $"New persona in free slot {dest.Id}: name '{project.PersonaName}', flags {project.Stats.Flags}, level {project.Stats.Level}, " +
                                    $"arcana {project.Stats.Arcana}, menu model {project.MenuModelPath ?? "(none: persona model)"}" );
@@ -1111,10 +1127,12 @@ namespace PersonaSwapper.Cli
                 Console.WriteLine( $"  UNIT.TBL: enemy {recruitEnemy} now gives persona {UnitTable.Parse( unitBytes ).EnemyVisuals[recruitEnemy].PersonaId}" );
             if ( build.Files.TryGetValue( GameData.VisualTablePath, out var visualBytes ) )
                 Console.WriteLine( $"  scale now {VisualTable.Parse( visualBytes ).Personas[personaId].BattleModelScale}%" );
-            var outLore = new PersonaLore( MessageScript.Parse( build.Files[PersonaLore.BmdPath] ) );
-            var pakLore = new PersonaLore( MessageScript.Parse( PakArchive.Parse( build.Files[PersonaLore.PakPath] ).Get( PersonaLore.PakEntryName )! ) );
-            Console.WriteLine( $"  lore now: {outLore.Get( personaId ).Replace( "\n", " / " )}" );
-            Console.WriteLine( $"  PAK copy matches: {pakLore.Get( personaId ) == outLore.Get( personaId )}" );
+            if ( build.Files.TryGetValue( PersonaLore.BmdPath, out var loreBytes ) )
+            {
+                var outLore = new PersonaLore( MessageScript.Parse( loreBytes ) );
+                Console.WriteLine( $"  lore now: {outLore.Get( personaId ).Replace( "\n", " / " )}" );
+                Console.WriteLine( $"  lore .msg: {( build.ModFiles.TryGetValue( PersonaLore.MsgPath, out var msg ) ? System.Text.Encoding.ASCII.GetString( msg ).Trim() : "(none)" )}" );
+            }
 
             var folder = ModWriter.Write( modsFolder, new ModInfo( "p5rpc.personaswap.test", "Persona Swap Test", "Persona Swapper", $"{source.DisplayName} as {dest.Name}" ), build );
             Console.WriteLine( $"Wrote mod to {folder}" );

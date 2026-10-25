@@ -21,6 +21,11 @@ namespace PersonaSwapper.Core.Swap
         /// <summary>Game-relative path ("MODEL/CHARACTER/...") to file contents.</summary>
         public Dictionary<string, byte[]> Files { get; } = new( StringComparer.OrdinalIgnoreCase );
 
+        /// <summary>Files outside the CPK folder, relative to the mod folder ("FEmulator/...").</summary>
+        public Dictionary<string, byte[]> ModFiles { get; } = new( StringComparer.OrdinalIgnoreCase );
+
+        public int FileCount => Files.Count + ModFiles.Count;
+
         public List<SlotReport> Slots { get; } = new();
 
         public List<string> Warnings { get; } = new();
@@ -199,22 +204,21 @@ namespace PersonaSwapper.Core.Swap
             AddIfChanged( result, game, GameData.NameTablePath, project.Names.Serialize() );
             AddIfChanged( result, game, GameData.VisualTablePath, project.Visual.Serialize() );
 
-            // 4. Lore: the compendium reads FACILITY/DATMYTH.BMD; an identical copy lives in INIT/DATMSG.PAK.
+            // 4. Lore, as a .msg that Persona Essentials merges with other mods' lore onto the game's original
+            //    FACILITY/DATMYTH.BMD and its copy in INIT/DATMSG.PAK. The edited BMD goes in both places as the
+            //    stand-in the merge replaces (and the fallback if merging isn't available).
             if ( project.Lore != null )
             {
-                var bmd = project.Lore.Script.Serialize();
-                if ( !game.Archive.Read( Messages.PersonaLore.BmdPath ).AsSpan().SequenceEqual( bmd ) )
+                var original = new Messages.PersonaLore( Messages.MessageScript.Parse( game.Archive.Read( Messages.PersonaLore.BmdPath ) ) );
+                var changed = project.Lore.ChangedFrom( original );
+                if ( changed.Count > 0 )
                 {
+                    var bmd = project.Lore.Script.Serialize();
+                    result.ModFiles[Messages.PersonaLore.MsgPath] = System.Text.Encoding.ASCII.GetBytes( Messages.PersonaLore.ToMsg( changed ) );
                     result.Files[Messages.PersonaLore.BmdPath] = bmd;
-                    if ( game.Archive.Contains( Messages.PersonaLore.PakPath ) )
-                    {
-                        var pak = Messages.PakArchive.Parse( game.Archive.Read( Messages.PersonaLore.PakPath ) );
-                        if ( pak.Get( Messages.PersonaLore.PakEntryName ) != null )
-                        {
-                            pak.Set( Messages.PersonaLore.PakEntryName, bmd );
-                            result.Files[Messages.PersonaLore.PakPath] = pak.Serialize();
-                        }
-                    }
+                    if ( game.Archive.Contains( Messages.PersonaLore.PakPath ) &&
+                         Messages.PakArchive.Parse( game.Archive.Read( Messages.PersonaLore.PakPath ) ).Get( Messages.PersonaLore.PakEntryName ) != null )
+                        result.ModFiles[Messages.PersonaLore.PakStandInPath] = bmd;
                 }
             }
 
