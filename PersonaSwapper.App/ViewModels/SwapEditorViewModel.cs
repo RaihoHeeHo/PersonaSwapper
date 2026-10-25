@@ -76,8 +76,8 @@ namespace PersonaSwapper.App.ViewModels
         public string NewPersonaHint => ( Project.Destination.WasStoryCopy
                                               ? $"This adds a new persona in slot {Project.Destination.Id}, an unused story copy of {Project.Destination.OriginalName} with no model (needs Custom Bonus Tweaks; untested: the story might use this ID). "
                                               : $"This adds a new persona in unused slot {Project.Destination.Id} (a placeholder the game ships with). " ) +
-                                        "Set its arcana and level: normal fusion may produce it like any other persona of that arcana " +
-                                        "(not yet confirmed in game). To be sure you can get it, pick a Shadow below to recruit it from.";
+                                        "Set its arcana and level: normal fusion produces it like any other persona of that arcana. " +
+                                        "You can also pick a Shadow below to recruit it from.";
 
         public IReadOnlyList<IdName> RecruitOptions => Lookups.RecruitableShadows;
 

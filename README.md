@@ -110,7 +110,7 @@ game has no `ENEMY/<id>` folder, and exports write the new model there (plus the
 the source is a Shadow). Personas also have `PSZ<id>.GMD` (80 of the 103 personas
 without a Shadow ship one, a copy of PS). New personas didn't have one and viewing them in the compendium crashed, so
 every export writes `PSZ<id>.GMD` (a copy of the new model), which some other mods also expect.
-Confirmed in game: a new persona appears in the compendium.
+Confirmed in game: a new persona appears in the compendium, shows its model, and can be fused normally by arcana and level.
 
 `BATTLE/TABLE/EXIST.TBL` lists every persona that exists (section 4 of four: sorted `{persona id, flags}` pairs, the
 last ID repeated as an end marker; the header holds each section's count and offset). It contains all 264 compendium
